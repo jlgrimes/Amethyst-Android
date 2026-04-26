@@ -240,6 +240,15 @@ public class JREUtils {
                 envMap.put("MESA_GL_VERSION_OVERRIDE","4.6COMPAT");
                 envMap.put("MESA_GLSL_VERSION_OVERRIDE","460");
             }
+            if (LOCAL_RENDERER.equals("opengles_mobilegl_gles")){
+                envMap.put("MOBILEGL_BACKEND_TYPE", "DirectGLES");
+            }
+            if (LOCAL_RENDERER.equals("opengles_mobilegl_vk")){
+                envMap.put("MOBILEGL_BACKEND_TYPE", "DirectVulkan");
+            }
+            if (LOCAL_RENDERER.startsWith("opengles_mobilegl_")){
+                envMap.put("POJAVEXEC_EGL","libMobileGL.so");
+            }
         }
 
         envMap.put("SDL_OPENGL_LIBRARY", graphicsLib);
@@ -503,6 +512,8 @@ public class JREUtils {
                 renderLibrary = "libng_gl4es.so"; break;
             case "vulkan_zink": renderLibrary = "libOSMesa.so"; break;
             case "opengles_mobileglues": renderLibrary = "libmobileglues.so"; break;
+            case "opengles_mobilegl_vk":
+            case "opengles_mobilegl_gles": renderLibrary = "libMobileGL.so"; break;
             case "opengles3_desktopgl_zink_kopper": renderLibrary = "libglxshim.so"; break;
             case "opengles3_ltw" : renderLibrary = "libltw.so"; break;
             default:
