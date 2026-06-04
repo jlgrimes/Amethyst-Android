@@ -52,6 +52,7 @@ import net.kdt.pojavlaunch.customcontrols.ControlJoystickData;
 import net.kdt.pojavlaunch.customcontrols.ControlLayout;
 import net.kdt.pojavlaunch.customcontrols.CustomControls;
 import net.kdt.pojavlaunch.customcontrols.EditorExitable;
+import net.kdt.pojavlaunch.dualscreen.DualScreenManager;
 import net.kdt.pojavlaunch.customcontrols.keyboard.LwjglCharSender;
 import net.kdt.pojavlaunch.customcontrols.keyboard.TouchCharInput;
 import net.kdt.pojavlaunch.customcontrols.mouse.GyroControl;
@@ -93,6 +94,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     private View mDrawerPullButton;
     private GyroControl mGyroControl = null;
     private ControlLayout mControlLayout;
+    private DualScreenManager mDualScreen;
     private HotbarView mHotbarView;
 
     MinecraftProfile minecraftProfile;
@@ -182,6 +184,12 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         MCOptionUtils.addMCOptionListener(optionListener);
         mControlLayout.setModifiable(false);
 
+        // Dual-screen: if a secondary display (e.g. AYN Thor bottom screen) is present, host a
+        // curated utility control deck on it (see ControlDeckPresentation). Movement/interaction
+        // stay on the device's physical controls; the primary screen is kept clean (see
+        // loadControls()). No-op single-screen fallback otherwise. Shown/dismissed in onResume/onPause.
+        mDualScreen = new DualScreenManager(this, null);
+
         // Set the activity for the executor. Must do this here, or else Tools.showErrorRemote() may not
         // execute the correct method
         ContextExecutor.setActivity(this);
@@ -266,6 +274,14 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     private void loadControls() {
+        // When the utility deck is on a secondary display, keep the primary screen clean: load no
+        // on-screen controls here (movement/interaction is handled by the device's physical controls).
+        if (mDualScreen != null && mDualScreen.hasSecondaryDisplay()) {
+            mControlLayout.loadLayout(new CustomControls());
+            mDrawerPullButton.setVisibility(View.GONE);
+            mControlLayout.setControlVisible(false);
+            return;
+        }
         try {
             // Load keys
             mControlLayout.loadLayout(
@@ -316,10 +332,12 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         if(PREF_ENABLE_GYRO) mGyroControl.enable();
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_FOCUSED, 1);
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_HOVERED, 1);
+        if(mDualScreen != null) mDualScreen.onResume();
     }
 
     @Override
     protected void onPause() {
+        if(mDualScreen != null) mDualScreen.onPause();
         mGyroControl.disable();
         if (CallbackBridge.isGrabbing()){
             sendKeyPress(LwjglGlfwKeycode.GLFW_KEY_ESCAPE);

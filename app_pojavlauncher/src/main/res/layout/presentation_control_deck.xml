@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Control deck shown on the secondary display (e.g. AYN Thor bottom touch screen).
+  An independent ControlLayout with no game surface: its buttons drive the game on the
+  primary display through the shared static CallbackBridge.
+-->
+<net.kdt.pojavlaunch.customcontrols.ControlLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/deck_control_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    android:keepScreenOn="true">
+
+    <View style="@style/DimensionTracker"/>
+
+</net.kdt.pojavlaunch.customcontrols.ControlLayout>
