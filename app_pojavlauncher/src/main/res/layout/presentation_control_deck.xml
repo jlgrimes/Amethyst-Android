@@ -14,4 +14,10 @@
 
     <View style="@style/DimensionTracker"/>
 
+    <net.kdt.pojavlaunch.dualscreen.InventoryView
+        android:id="@+id/deck_inventory"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:translationZ="1dp"/>
+
 </net.kdt.pojavlaunch.customcontrols.ControlLayout>

@@ -79,6 +79,17 @@ public class ControlDeckPresentation extends Presentation {
 
         mDeckControlLayout.loadLayout(buildUtilityDeck());
         mDeckControlLayout.setControlVisible(true);
+
+        // Inventory panel: reads the JSON file written by the companion Fabric mod (thor_deck mod)
+        // and renders the player's inventory on this screen. Default-gameDir path (.minecraft).
+        InventoryView inventory = findViewById(R.id.deck_inventory);
+        if (inventory != null) {
+            java.io.File files = mActivity.getExternalFilesDir(null);
+            if (files != null) {
+                inventory.setInventoryFile(
+                        new java.io.File(files, ".minecraft/thor_deck/inventory.json"));
+            }
+        }
     }
 
     /** Build the curated utility layout (no movement controls). */
