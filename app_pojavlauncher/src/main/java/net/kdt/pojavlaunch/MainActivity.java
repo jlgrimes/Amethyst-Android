@@ -32,6 +32,7 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
@@ -512,25 +513,28 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     private void openQuickSettings() {
-        if(mQuickSettingSideDialog == null) {
-            mQuickSettingSideDialog = new QuickSettingSideDialog(this, mControlLayout) {
-                @Override
-                public void onResolutionChanged() {
-                    minecraftGLView.refreshSize();
-                    mHotbarView.onResolutionChanged();
-                }
+        // Host the settings dialog on the deck (secondary screen) when available, so it slides in
+        // there instead of covering the game on the primary display. Rebuilt each time because the
+        // deck's view (and thus the parent) is recreated across pause/resume.
+        ViewGroup sideParent = (mDualScreen != null && mDualScreen.getDeckRoot() != null)
+                ? mDualScreen.getDeckRoot() : mControlLayout;
+        mQuickSettingSideDialog = new QuickSettingSideDialog(sideParent.getContext(), sideParent) {
+            @Override
+            public void onResolutionChanged() {
+                minecraftGLView.refreshSize();
+                mHotbarView.onResolutionChanged();
+            }
 
-                @Override
-                public void onGyroStateChanged() {
-                    mGyroControl.updateOrientation();
-                    if (PREF_ENABLE_GYRO) {
-                        mGyroControl.enable();
-                    } else {
-                        mGyroControl.disable();
-                    }
+            @Override
+            public void onGyroStateChanged() {
+                mGyroControl.updateOrientation();
+                if (PREF_ENABLE_GYRO) {
+                    mGyroControl.enable();
+                } else {
+                    mGyroControl.disable();
                 }
-            };
-        }
+            }
+        };
         mQuickSettingSideDialog.appear(true);
     }
 
@@ -563,6 +567,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     public static void switchKeyboardState() {
+        // Use the real system IME. On the AYN Thor, firmware setting ime_show_on_second pins it to
+        // the bottom screen automatically, so no custom keyboard is needed.
         if(touchCharInput != null) touchCharInput.switchKeyboardState();
     }
 

@@ -13,6 +13,29 @@ Amethyst is a launcher that allows you to play Minecraft: Java Edition on your A
 
 For more details, check out our [wiki](https://wiki.angelauramc.dev)!
 
+## AYN Thor Dual-Screen (this fork)
+
+This fork adds dual-screen support for the **AYN Thor** (and other Android devices with a secondary
+presentation display). When a secondary display is detected:
+
+* **Top screen:** clean, full-screen Minecraft — no on-screen control clutter.
+* **Bottom touch screen:** a utility control deck (Menu, Esc, Keyboard, Mouse toggle, Inventory,
+  Chat, Perspective, Debug). Movement/look/interaction stay on the device's **physical controls**.
+* **In-game settings** slide in on the bottom screen instead of covering the game.
+
+Devices without a secondary display fall back to the normal single-screen behavior.
+
+### Putting the keyboard on the bottom screen
+
+The **Keyboard** button uses your real system keyboard (e.g. Gboard). To make it appear on the
+**bottom** screen instead of over the game, enable the AYN Thor's built-in keyboard pinning:
+
+> **AYN Thor settings → enable "show keyboard on second screen" / pin the on-screen keyboard to the
+> bottom screen** (the firmware setting `ime_show_on_second`).
+
+This is a device/firmware setting — the app intentionally does **not** ship its own keyboard, so you
+get your normal keyboard (autocorrect, emoji, etc.) pinned to the bottom by the Thor.
+
 ## Table of Contents
 
 * [Introduction](#introduction)

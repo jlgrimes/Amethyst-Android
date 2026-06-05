@@ -2,10 +2,9 @@ package net.kdt.pojavlaunch.dualscreen;
 
 import android.app.Activity;
 import android.app.Presentation;
-import android.content.Context;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.Display;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 
 import net.kdt.pojavlaunch.LwjglGlfwKeycode;
@@ -27,9 +26,11 @@ import java.util.List;
  *
  * Buttons drive the game through the shared static CallbackBridge, so they work from this display
  * while Minecraft renders full-screen on the primary one.
+ *
+ * Note: the "Keyboard" button triggers the real system IME, which the AYN Thor pins to the bottom
+ * screen via its firmware setting (ime_show_on_second) — no custom keyboard is needed.
  */
 public class ControlDeckPresentation extends Presentation {
-    private static final String TAG = "ControlDeck";
 
     // Grid column X expressions (4 columns), evaluated against the deck's geometry.
     private static final String COL_1 = "${margin}";
@@ -49,6 +50,11 @@ public class ControlDeckPresentation extends Presentation {
     }
 
     public ControlLayout getDeckControlLayout() {
+        return mDeckControlLayout;
+    }
+
+    /** Root container of the deck — used as a parent to slide side dialogs (settings) onto this screen. */
+    public ViewGroup getDeckRoot() {
         return mDeckControlLayout;
     }
 

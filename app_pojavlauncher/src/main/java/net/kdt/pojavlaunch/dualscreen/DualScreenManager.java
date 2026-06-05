@@ -46,6 +46,11 @@ public class DualScreenManager implements DisplayManager.DisplayListener {
         return findPresentationDisplay() != null;
     }
 
+    /** Root view of the deck if it's currently showing, for hosting side dialogs on the deck screen. */
+    public android.view.ViewGroup getDeckRoot() {
+        return mPresentation != null ? mPresentation.getDeckRoot() : null;
+    }
+
     /** Pick the best secondary display: prefer one flagged FLAG_PRESENTATION, never the default. */
     private Display findPresentationDisplay() {
         if (mDisplayManager == null) return null;
