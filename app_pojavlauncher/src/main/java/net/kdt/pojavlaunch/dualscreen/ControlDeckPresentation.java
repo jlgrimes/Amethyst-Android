@@ -86,8 +86,10 @@ public class ControlDeckPresentation extends Presentation {
         if (inventory != null) {
             java.io.File files = mActivity.getExternalFilesDir(null);
             if (files != null) {
-                inventory.setInventoryFile(
-                        new java.io.File(files, ".minecraft/thor_deck/inventory.json"));
+                java.io.File deck = new java.io.File(files, ".minecraft/thor_deck");
+                inventory.setInventoryFile(new java.io.File(deck, "inventory.json"));
+                inventory.setIconDir(new java.io.File(deck, "icons"));
+                inventory.setCommandFile(new java.io.File(deck, "command.json"));
             }
         }
     }
