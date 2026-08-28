@@ -33,6 +33,7 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -60,6 +61,7 @@ import net.kdt.pojavlaunch.customcontrols.ControlJoystickData;
 import net.kdt.pojavlaunch.customcontrols.ControlLayout;
 import net.kdt.pojavlaunch.customcontrols.CustomControls;
 import net.kdt.pojavlaunch.customcontrols.EditorExitable;
+import net.kdt.pojavlaunch.dualscreen.DualScreenManager;
 import net.kdt.pojavlaunch.customcontrols.keyboard.LwjglCharSender;
 import net.kdt.pojavlaunch.customcontrols.keyboard.TouchCharInput;
 import net.kdt.pojavlaunch.customcontrols.mouse.GyroControl;
@@ -103,6 +105,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     private View mDrawerPullButton;
     private GyroControl mGyroControl = null;
     private ControlLayout mControlLayout;
+    private DualScreenManager mDualScreen;
     private HotbarView mHotbarView;
     private FrameLayout contentFrame;
 
@@ -173,6 +176,21 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         MCOptionUtils.MCOptionListener optionListener = MCOptionUtils::getMcScale;
         MCOptionUtils.addMCOptionListener(optionListener);
         mControlLayout.setModifiable(false);
+
+        // Dual-screen: if a secondary display (e.g. AYN Thor bottom screen) is present, host a
+        // curated utility control deck on it (see ControlDeckPresentation). Movement/interaction
+        // stay on the device's physical controls; the primary screen is kept clean (see
+        // loadControls()). No-op single-screen fallback otherwise. Shown/dismissed in onResume/onPause.
+        mDualScreen = new DualScreenManager(this, new DualScreenManager.DeckCallback() {
+            @Override
+            public void onDeckAttached() {
+                loadControls();
+            }
+            @Override
+            public void onDeckDetached() {
+                loadControls();
+            }
+        });
 
         // Listen to IME insets animation
         ViewCompat.setWindowInsetsAnimationCallback(contentFrame, new WindowInsetsAnimationCompat.Callback(WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_STOP) {
@@ -296,6 +314,14 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     private void loadControls() {
+        // When the utility deck is on a secondary display, keep the primary screen clean: load no
+        // on-screen controls here (movement/interaction is handled by the device's physical controls).
+        if (mDualScreen != null && mDualScreen.hasSecondaryDisplay()) {
+            mControlLayout.loadLayout(new CustomControls());
+            mDrawerPullButton.setVisibility(View.GONE);
+            mControlLayout.setControlVisible(false);
+            return;
+        }
         try {
             // Load keys
             mControlLayout.loadLayout(
@@ -348,10 +374,12 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         if(PREF_ENABLE_GYRO) mGyroControl.enable();
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_FOCUSED, 1);
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_HOVERED, 1);
+        if(mDualScreen != null) mDualScreen.onResume();
     }
 
     @Override
     protected void onPause() {
+        if(mDualScreen != null) mDualScreen.onPause();
         mGyroControl.disable();
         if (CallbackBridge.isGrabbing()){
             sendKeyPress(LwjglGlfwKeycode.GLFW_KEY_ESCAPE);
@@ -531,25 +559,28 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     private void openQuickSettings() {
-        if(mQuickSettingSideDialog == null) {
-            mQuickSettingSideDialog = new QuickSettingSideDialog(this, mControlLayout) {
-                @Override
-                public void onResolutionChanged() {
-                    minecraftGLView.refreshSize();
-                    mHotbarView.onResolutionChanged();
-                }
+        // Host the settings dialog on the deck (secondary screen) when available, so it slides in
+        // there instead of covering the game on the primary display. Rebuilt each time because the
+        // deck's view (and thus the parent) is recreated across pause/resume.
+        ViewGroup sideParent = (mDualScreen != null && mDualScreen.getDeckRoot() != null)
+                ? mDualScreen.getDeckRoot() : mControlLayout;
+        mQuickSettingSideDialog = new QuickSettingSideDialog(sideParent.getContext(), sideParent) {
+            @Override
+            public void onResolutionChanged() {
+                minecraftGLView.refreshSize();
+                mHotbarView.onResolutionChanged();
+            }
 
-                @Override
-                public void onGyroStateChanged() {
-                    mGyroControl.updateOrientation();
-                    if (PREF_ENABLE_GYRO) {
-                        mGyroControl.enable();
-                    } else {
-                        mGyroControl.disable();
-                    }
+            @Override
+            public void onGyroStateChanged() {
+                mGyroControl.updateOrientation();
+                if (PREF_ENABLE_GYRO) {
+                    mGyroControl.enable();
+                } else {
+                    mGyroControl.disable();
                 }
-            };
-        }
+            }
+        };
         mQuickSettingSideDialog.appear(true);
     }
 
@@ -582,6 +613,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     public static void switchKeyboardState() {
+        // Use the real system IME. On the AYN Thor, firmware setting ime_show_on_second pins it to
+        // the bottom screen automatically, so no custom keyboard is needed.
         if(touchCharInput != null) touchCharInput.switchKeyboardState();
     }
 
