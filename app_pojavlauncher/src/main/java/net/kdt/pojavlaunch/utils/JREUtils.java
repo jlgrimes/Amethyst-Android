@@ -170,7 +170,8 @@ public class JREUtils {
                 .append("/vendor/").append(libName).append("/hw:")
                 .append(NATIVE_LIB_DIR);
         // FIXME: Freetype is shipped inside lwjgl. We should ship it outside and use lwjgl native jars instead.
-        ldLibraryPath.append(String.format(":%s/lwjgl-3.3.3-natives/%s", Tools.DIR_DATA, archAsStringAndroid(getDeviceArchitecture())));
+        String lwjglVer = Tools.sLwjglVersion == null ? "3.3.3" : Tools.sLwjglVersion;
+        ldLibraryPath.append(String.format(":%s/lwjgl-%s-natives/%s", Tools.DIR_DATA, lwjglVer, archAsStringAndroid(getDeviceArchitecture())));
         LD_LIBRARY_PATH = ldLibraryPath.toString();
     }
 
@@ -240,6 +241,7 @@ public class JREUtils {
                 envMap.put("MESA_GLSL_VERSION_OVERRIDE","460");
             }
         }
+
         if(LauncherPreferences.PREF_BIG_CORE_AFFINITY) envMap.put("POJAV_BIG_CORE_AFFINITY", "1");
         envMap.put("AWTSTUB_WIDTH", Integer.toString(CallbackBridge.windowWidth > 0 ? CallbackBridge.windowWidth : CallbackBridge.physicalWidth));
         envMap.put("AWTSTUB_HEIGHT", Integer.toString(CallbackBridge.windowHeight > 0 ? CallbackBridge.windowHeight : CallbackBridge.physicalHeight));
@@ -264,6 +266,9 @@ public class JREUtils {
         if(info.isAdreno() && !PREF_ZINK_PREFER_SYSTEM_DRIVER) {
             envMap.put("POJAV_LOAD_TURNIP", "1");
         }
+
+        envMap.put("DALVIK_APPLICATION", Tools.jObjectToString(activity.getApplication()));
+        envMap.put("DALVIK_JAVAVM", String.valueOf(Tools.getJavaVMPointer()));
 
         readCustomEnv(envMap); // Must be last so it overrides anything the user sets for obvious reasons.
 
@@ -304,8 +309,18 @@ public class JREUtils {
         JREUtils.relocateLibPath(runtime, runtimeHome);
 
         setJavaEnvironment(activity, runtimeHome);
-
         final String graphicsLib = loadGraphicsLibrary();
+
+        // Has to run after SDL env vars are set
+        try {
+            if (graphicsLib != null)
+                Os.setenv("SDL_OPENGL_LIBRARY", graphicsLib, true);
+            if (Os.getenv("POJAVEXEC_EGL") != null)
+                Os.setenv("SDL_EGL_LIBRARY", NATIVE_LIB_DIR+"/"+Os.getenv("POJAVEXEC_EGL"), true);
+        } catch (ErrnoException e) {
+            Log.wtf("RENDER_LIBRARY", "Failed to load set SDL env vars");
+        }
+
         List<String> userArgs = getJavaArgs(activity, runtimeHome, userArgsString);
 
         //Remove arguments that can interfere with the good working of the launcher
@@ -340,7 +355,8 @@ public class JREUtils {
         // Some phones are not using the right number of cores, fix that
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
         // Adds/changes methods for compatibility
-        userArgs.add("-javaagent:"+new File(Tools.DIR_DATA,"methods_injector_agent/methods_injector_agent.jar").getAbsolutePath());
+        userArgs.add("-javaagent:"+new File(Tools.DIR_DATA,"MioLibPatcher/MioLibPatcher.jar").getAbsolutePath());
+        userArgs.add("-Dmiolibpatcher.alc10=true");
 
         userArgs.addAll(JVMArgs);
         activity.runOnUiThread(() -> Toast.makeText(activity, activity.getString(R.string.autoram_info_msg,LauncherPreferences.PREF_RAM_ALLOCATION), Toast.LENGTH_SHORT).show());
@@ -504,6 +520,15 @@ public class JREUtils {
                 Log.w("RENDER_LIBRARY", "No renderer selected, defaulting to opengles2");
                 renderLibrary = "libng_gl4es.so";
                 break;
+        }
+        // Has to run before dlopening mobileglues
+        if(LOCAL_RENDERER.equals("opengles_mobileglues")){
+            try {
+                Os.setenv("MG_DIR_PATH", Tools.DIR_DATA + "/MobileGlues", true);
+                Os.setenv("POJAVEXEC_EGL",renderLibrary, true);
+            } catch (ErrnoException e) {
+                Log.wtf("RENDER_LIBRARY", "Failed to load MobileGlues settings");
+            }
         }
 
         if (!dlopen(renderLibrary) && !dlopen(findInLdLibPath(renderLibrary))) {

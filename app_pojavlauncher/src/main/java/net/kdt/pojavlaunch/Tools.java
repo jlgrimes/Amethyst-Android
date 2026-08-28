@@ -280,15 +280,30 @@ public final class Tools {
      * @return Whether or not the .jar is found
      */
     public static boolean hasMods(String... filenames) {
+        return !getMods(filenames).isEmpty();
+    }
+
+    /**
+     * Searches for mod in mods directory of current selected profile
+     * Not case-sensitive
+     * @param filenames Filename(s) of the .jar mod(s)
+     * @return The found mods
+     */
+    public static List<File> getMods(String... filenames) {
         File gameDir = getGameDir();
         File modsDir = new File(gameDir, "mods");
-        File[] modFiles = modsDir.listFiles(file -> file.isFile() && file.getName().endsWith(".jar"));
-        if (modFiles == null) return false;
+        File[] modFiles = modsDir.listFiles(file -> file.isFile() && file.getName().toLowerCase().endsWith(".jar"));
+        if (modFiles == null) return new ArrayList<>();
+        List<File> foundModFiles = new ArrayList<>();
         for (File file : modFiles) {
             for (String filename : filenames)
-                if (file.getName().toLowerCase().contains(filename.toLowerCase())) return true;
+                if (file.getName().toLowerCase().contains(filename.toLowerCase()) &&
+                        file.getName().toLowerCase().endsWith(".jar")) {
+                    foundModFiles.add(file);
+                    break;
+                }
         }
-        return false;
+        return foundModFiles;
     }
 
     /**
@@ -619,15 +634,15 @@ public final class Tools {
             String TAG = "OldLegacy4JMitigation";
             Log.i(TAG, "Legacy4J detected!");
             oldL4JMitigationLogListener = loggedLine -> {
-                if (LauncherPreferences.PREF_GAMEPAD_SDL_PASSTHRU && loggedLine.contains("literal{SDL3 (isXander's libsdl4j)} isn't supported in this system. GLFW will be used instead.")) {
-                    Log.i(TAG, "Old version of Legacy4J detected! Force enabling SDL");
+                if (loggedLine.contains("literal{SDL3 (isXander's libsdl4j)} isn't supported in this system. GLFW will be used instead.")) {
+                    Logger.appendToLog("Amethyst-Android: Broken version of Legacy4J (below 1.8.51.8.5.2537.1) detected! Force enabling SDL");
                     Tools.SDL.initializeControllerSubsystems();
                     Tools.runOnUiThread(() -> {
                         Tools.dialog(activity, activity.getString(R.string.global_warning), activity.getString(R.string.oldL4JFound));
                     });
                     Logger.removeLogListener(oldL4JMitigationLogListener);
-                } else if (LauncherPreferences.PREF_GAMEPAD_SDL_PASSTHRU && loggedLine.contains("Added SDL Controller Mappings")) {
-                    Log.i(TAG, "Fixed version of Legacy4J detected! Have fun!");
+                } else if (loggedLine.contains("Added SDL Controller Mappings")) {
+                    Logger.appendToLog("Amethyst-Android: Fixed version of Legacy4J (1.8.5.2537.1 or higher) detected! Have fun!");
                     Logger.removeLogListener(oldL4JMitigationLogListener);
                 }
             };
@@ -885,18 +900,25 @@ public final class Tools {
         String internalLwjglVersion = iLwjglVersion >= 341 ? "3.4.1" : "3.3.3";
         File lwjgl3Folder = new File(Tools.DIR_GAME_HOME, "lwjgl3/"+internalLwjglVersion);
         String lwjglCore = lwjgl3Folder.getAbsolutePath() + "/lwjgl.jar";
-        String lwjglMerged = lwjgl3Folder.getAbsolutePath() + "/lwjgl-"+internalLwjglVersion+"-merged-modules";
+        String lwjglMerged = lwjgl3Folder.getAbsolutePath() + "/lwjgl-"+internalLwjglVersion+"-merged-modules.jar";
         String lwjglxFile = lwjgl3Folder + "/lwjgl-lwjglx.jar";
 
-
+        if (!new File(lwjglCore).exists() || !new File(lwjglMerged).exists() || !new File(lwjglxFile).exists()) {
+            try { // Delete the folder so on restart will re-extract them.
+                if (lwjgl3Folder.exists())
+                    org.apache.commons.io.FileUtils.deleteDirectory(lwjgl3Folder);
+            } catch (IOException ignored) {}
+            throw new RuntimeException("LWJGL jars incomplete, restart the app to reextract them.");
+        }
         launchClasspath.append(lwjglCore).append(":");
         // 2nd in priority in case we need to merge lwjgl.jar again for testing
         launchClasspath.append(lwjglMerged).append(":");
 
         File[] lwjglModules = lwjgl3Folder.listFiles(pathname ->
                 pathname.getName().endsWith(".jar") &&
-            // Exclude our two special jars which goes first and last
+                // Exclude our three special jars which goes first, second and last
                 !pathname.getName().equals("lwjgl.jar") &&
+                !pathname.getName().equals("lwjgl-"+internalLwjglVersion+"-merged-modules.jar") &&
                 !pathname.getName().endsWith("lwjglx.jar"));
 
         if (lwjglModules != null) {
@@ -1386,10 +1408,12 @@ public final class Tools {
         android.os.Process.killProcess(android.os.Process.myPid());
     }
 
-    public static void printLauncherInfo(String gameVersion, String javaArguments) {
+    public static void printLauncherInfo(String gameVersion, String javaArguments, int deviceRam) {
         Logger.appendToLog("Info: Launcher version: " + BuildConfig.VERSION_NAME);
         Logger.appendToLog("Info: Architecture: " + Architecture.archAsString(DEVICE_ARCHITECTURE));
         Logger.appendToLog("Info: Device model: " + Build.MANUFACTURER + " " +Build.MODEL);
+        Logger.appendToLog(String.format("Info: Total RAM: %s MB", deviceRam != 0 ? deviceRam : "unavailable"));
+        Logger.appendToLog("Info: Allocated RAM: " + LauncherPreferences.PREF_RAM_ALLOCATION + "MB");
         Logger.appendToLog("Info: API version: " + SDK_INT);
         Logger.appendToLog("Info: Selected Minecraft version: " + gameVersion);
         Logger.appendToLog("Info: Custom Java arguments: \"" + javaArguments + "\"");
@@ -1911,7 +1935,7 @@ public final class Tools {
         return motionListener;
     }
 
-    static class SDL {
+    public static class SDL {
         /**
          * Initializes gamepad, joystick, and event subsystems.
          * This triggers {@link SDLControllerManager#pollInputDevices()} and subsequently disables
@@ -1919,4 +1943,6 @@ public final class Tools {
          */
         public static native void initializeControllerSubsystems();
     }
+    public static native String jObjectToString(Object object);
+    public static native long getJavaVMPointer();
 }

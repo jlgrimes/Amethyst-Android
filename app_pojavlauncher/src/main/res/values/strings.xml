@@ -74,8 +74,6 @@
     <string name="mcl_setting_veroption_snapshot">Snapshot</string>
     <string name="mcl_setting_veroption_oldalpha">Old-alpha</string>
     <string name="mcl_setting_veroption_oldbeta">Old-beta</string>
-    <string name="mcl_setting_java_sandbox">Sandbox .jar execution</string>
-    <string name="mcl_setting_java_sandbox_subtitle">Control the availability of the sandbox security manager when executing a .jar file.</string>
     <string name="mcl_version_clone">Clone</string>
 
     <!-- Global strings -->
@@ -176,6 +174,8 @@
     <string name="mcl_setting_subtitle_mousespeed">Changes the speed of the virtual mouse.</string>
     <string name="mcl_setting_title_grab_mouse">Use virtual cursor</string>
     <string name="mcl_setting_subtitle_grab_mouse">Ensures the cursor stays inside the game. Prevents mouse from clicking touch control layout.</string>
+    <string name="mcl_setting_title_keyboard_panning">Keyboard panning</string>
+    <string name="mcl_setting_subtitle_keyboard_panning">Shift the screen upwards when the keyboard is open.</string>
     <string name="customctrl_passthru">Mouse pass-thru</string>
     <string name="customctrl_swipeable">Swipeable</string>
     <string name="customctrl_forward_lock">Forward lock</string>
@@ -396,7 +396,6 @@
     <string name="log_view_button_output_on">Output\nON</string>
     <string name="log_view_label_log_output">Log output:</string>
     <string name="execute_jar_failed_to_read_file">Failed to read the .jar file</string>
-    <string name="execute_jar_incompatible_runtime">Execute .jar feature is not compatible with Java %d</string>
     <string name="controller_button_a">A</string>
     <string name="controller_button_b">B</string>
     <string name="controller_button_x">X</string>
@@ -479,7 +478,7 @@
     <string name="error_vanilla_json_corrupt">Vanilla json seems to be corrupt. Please send a bug report on github or discord.</string>
     <string name="preference_ask_for_microphone_title">Allow microphone</string>
     <string name="preference_ask_for_microphone_description">Click to re-request the notification permission, required for voice chat mods like Simple Voice Chat.</string>
-    <string name="mcl_gamepad_forcedSDL_subtitle">Can allow old versions of Legacy4J to use SDL backend</string>
+    <string name="mcl_gamepad_forcedSDL_subtitle">If 26.3-snapshot-4 and above or controller mods are not properly functioning, this can fix it.</string>
     <string name="mcl_gamepad_forcedSDL">Forcibly start SDL controller handling</string>
     <string name="preference_category_SDL_settings">SDL Settings</string>
     <string name="oldL4JFound">You are using a version of Legacy4J without the android fixes! You will need to manually enable SDL in the controller settings to get the best experience!</string>
@@ -506,5 +505,17 @@
     <string name="global_download">Download</string>
     <string name="multirt_no_internet">Failed to download, check your internet connection.</string>
     <string name="global_installing">Installing…</string>
+    <string name="error_key_unsupported">Error! The key assigned to this button is invalid. Did you try updating?</string>
+    <string name="error_invalid_value">Error! Invalid value!</string>
+    <string name="minecraft_no_username_set">Your Minecraft username is not set! You must set it in the Minecraft website before being able to log in!</string>
+    <string name="create_lwjgl3ify_profile">Create LWJGL3ify profile</string>
+    <string name="select_lwjgl3ify_version">Select LWJGL3ify version</string>
+    <string name="lwjgl3ify_installer_available_versions">Supported LWJGL3IFY versions</string>
+    <string name="lwjgl3ify_installer_broken_versions">Broken LWJGL3ify versions (SDL)</string>
+    <string name="new_default_controls">Extracted new default controls into new_default.json. Try it out!</string>
+    <string name="import_modpack_start">Importing modpack…</string>
+    <string name="import_modpack_hash">Hashing modpack file… (%s MB/ %s MB)</string>
+    <string name="import_modpack_json">Reading modpack info…</string>
+    <string name="import_modpack_copy">Copying modpack file to cache… (%s MB/ %s MB)</string>
 
 </resources>
