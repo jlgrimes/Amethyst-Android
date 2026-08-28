@@ -2,8 +2,8 @@
 <!--
   Control deck shown on the secondary display (e.g. AYN Thor bottom touch screen).
   FrameLayout root so side dialogs (quick settings) can overlay the whole deck.
-  Vertical LinearLayout: top = utility ControlLayout (fixed height so Menu/Esc/Keyboard/Mouse/
-  Inventory/Chat/F5/F3 stay tappable), bottom = InventoryView taking the remaining space.
+  Top-to-bottom: utility ControlLayout (fixed 132dp), status strip, MAP/INV/CHAT tabs,
+  then the selected content pane (minimap default). Never overlay inventory on the buttons.
   Buttons drive the game on the primary display through the shared static CallbackBridge.
 -->
 <FrameLayout
@@ -22,16 +22,128 @@
         <net.kdt.pojavlaunch.customcontrols.ControlLayout
             android:id="@+id/deck_control_layout"
             android:layout_width="match_parent"
-            android:layout_height="152dp">
+            android:layout_height="132dp">
 
             <View style="@style/DimensionTracker"/>
         </net.kdt.pojavlaunch.customcontrols.ControlLayout>
 
-        <net.kdt.pojavlaunch.dualscreen.InventoryView
-            android:id="@+id/deck_inventory"
+        <net.kdt.pojavlaunch.dualscreen.StatusStripView
+            android:id="@+id/deck_status"
+            android:layout_width="match_parent"
+            android:layout_height="32dp"/>
+
+        <LinearLayout
+            android:id="@+id/deck_tabs"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:orientation="horizontal"
+            android:background="#FF1A1A1A">
+
+            <LinearLayout
+                android:id="@+id/deck_tab_map"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="false"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/deck_tab_map_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:gravity="center"
+                    android:text="MAP"
+                    android:textColor="#FFFFB000"
+                    android:textSize="13sp"
+                    android:textStyle="bold"/>
+                <View
+                    android:id="@+id/deck_tab_map_bar"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="#FFFFB000"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/deck_tab_inv"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="false"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/deck_tab_inv_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:gravity="center"
+                    android:text="INV"
+                    android:textColor="#FF8A8A8A"
+                    android:textSize="13sp"
+                    android:textStyle="bold"/>
+                <View
+                    android:id="@+id/deck_tab_inv_bar"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="#00000000"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/deck_tab_chat"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="false"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/deck_tab_chat_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:gravity="center"
+                    android:text="CHAT"
+                    android:textColor="#FF8A8A8A"
+                    android:textSize="13sp"
+                    android:textStyle="bold"/>
+                <View
+                    android:id="@+id/deck_tab_chat_bar"
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:background="#00000000"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <FrameLayout
+            android:id="@+id/deck_content"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"/>
+            android:layout_weight="1">
+
+            <net.kdt.pojavlaunch.dualscreen.MinimapView
+                android:id="@+id/deck_map"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"/>
+
+            <net.kdt.pojavlaunch.dualscreen.InventoryView
+                android:id="@+id/deck_inventory"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"/>
+
+            <net.kdt.pojavlaunch.dualscreen.ChatLogView
+                android:id="@+id/deck_chat"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"/>
+        </FrameLayout>
     </LinearLayout>
 
 </FrameLayout>
