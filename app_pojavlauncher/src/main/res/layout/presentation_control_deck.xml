@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Control deck shown on the secondary display (e.g. AYN Thor bottom touch screen).
+  FrameLayout root so side dialogs (quick settings) can overlay the whole deck.
+  Vertical LinearLayout: top = utility ControlLayout (fixed height so Menu/Esc/Keyboard/Mouse/
+  Inventory/Chat/F5/F3 stay tappable), bottom = InventoryView taking the remaining space.
+  Buttons drive the game on the primary display through the shared static CallbackBridge.
+-->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/deck_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    android:keepScreenOn="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <net.kdt.pojavlaunch.customcontrols.ControlLayout
+            android:id="@+id/deck_control_layout"
+            android:layout_width="match_parent"
+            android:layout_height="152dp">
+
+            <View style="@style/DimensionTracker"/>
+        </net.kdt.pojavlaunch.customcontrols.ControlLayout>
+
+        <net.kdt.pojavlaunch.dualscreen.InventoryView
+            android:id="@+id/deck_inventory"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+    </LinearLayout>
+
+</FrameLayout>
