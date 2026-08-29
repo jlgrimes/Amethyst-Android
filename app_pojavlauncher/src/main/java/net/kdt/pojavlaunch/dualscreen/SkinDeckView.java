@@ -57,7 +57,7 @@ public class SkinDeckView extends View {
         }
         StringBuilder sb = new StringBuilder();
         AssetManager am = getContext().getAssets();
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 64; i++) {
             String path = "thor_skins/skin_" + stem + String.format(Locale.US, ".%02d.b64", i);
             try (InputStream in = am.open(path)) {
                 ByteArrayOutputStream buf = new ByteArrayOutputStream();
