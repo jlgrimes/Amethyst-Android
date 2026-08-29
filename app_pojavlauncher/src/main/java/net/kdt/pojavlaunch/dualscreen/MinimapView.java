@@ -51,6 +51,7 @@ public class MinimapView extends View {
     private boolean panning;
     private long lastPanAt;
     private long appliedSeq = -1;
+    private boolean holeMode;
 
     public static final class MapMeta {
         public long seq;
@@ -104,6 +105,12 @@ public class MinimapView extends View {
         invalidate();
     }
 
+    /** When true, skip the dark fill and coord overlay so the mock skin shows through. */
+    public void setHoleMode(boolean hole) {
+        holeMode = hole;
+        invalidate();
+    }
+
     public void setEmptyCopy(String title, String sub) {
         if (title != null) emptyTitle = title;
         if (sub != null) emptySub = sub;
@@ -137,9 +144,10 @@ public class MinimapView extends View {
     protected void onDraw(Canvas canvas) {
         int w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
-        canvas.drawColor(0xFF1E1E1E);
+        if (!holeMode) canvas.drawColor(0xFF1E1E1E);
 
         if (mapBmp == null || mapBmp.isRecycled()) {
+            if (holeMode) return; // let the painted map on the skin show through
             emptyPaint.setTextSize(dp(16));
             emptySubPaint.setTextSize(dp(13));
             canvas.drawText(emptyTitle, w / 2f, h / 2f - dp(6), emptyPaint);
@@ -166,7 +174,7 @@ public class MinimapView extends View {
         float cy = dstRect.centerY();
         drawArrow(canvas, cx, cy, meta == null ? 0f : meta.yaw);
 
-        drawOverlay(canvas, w, h);
+        if (!holeMode) drawOverlay(canvas, w, h);
     }
 
     /** Faint grid every 16 source pixels (one Minecraft chunk). */

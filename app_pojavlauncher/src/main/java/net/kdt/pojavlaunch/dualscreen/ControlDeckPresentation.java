@@ -10,8 +10,8 @@ import android.os.Looper;
 import android.view.Display;
 import android.view.View;
 import android.view.ViewGroup;
+import android.graphics.drawable.ColorDrawable;
 import android.view.WindowManager;
-import android.widget.TextView;
 
 import net.kdt.pojavlaunch.LwjglGlfwKeycode;
 import net.kdt.pojavlaunch.R;
@@ -60,21 +60,17 @@ public class ControlDeckPresentation extends Presentation {
     private static final int TAB_MAP = 0;
     private static final int TAB_INV = 1;
     private static final int TAB_CHAT = 2;
-    private static final int GOLD = 0xFFFFB000;
-    private static final int TAB_DIM = 0xFF8A8A8A;
-
     private final Activity mActivity;
     private final Handler mUiHandler = new Handler(Looper.getMainLooper());
     private ViewGroup mDeckRoot;
     private ControlLayout mDeckControlLayout;
 
+    private SkinDeckView mSkin;
+    private View mContent;
     private MinimapView mMinimap;
     private InventoryView mInventory;
     private ChatLogView mChat;
     private StatusStripView mStatus;
-    private View mTabMap, mTabInv, mTabChat;
-    private TextView mTabMapLabel, mTabInvLabel, mTabChatLabel;
-    private View mTabMapBar, mTabInvBar, mTabChatBar;
     private int mSelectedTab = TAB_MAP;
 
     private File mMapPng;
@@ -116,6 +112,8 @@ public class ControlDeckPresentation extends Presentation {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             // Don't steal input focus from the game on the primary display.
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            getWindow().setBackgroundDrawable(new ColorDrawable(0xFF1A140E));
         }
 
         setContentView(R.layout.presentation_control_deck);
@@ -131,23 +129,17 @@ public class ControlDeckPresentation extends Presentation {
         mDeckControlLayout.loadLayout(buildUtilityDeck());
         mDeckControlLayout.setControlVisible(true);
 
+        mSkin = findViewById(R.id.deck_skin);
+        mContent = findViewById(R.id.deck_content);
         mMinimap = findViewById(R.id.deck_map);
         mInventory = findViewById(R.id.deck_inventory);
         mChat = findViewById(R.id.deck_chat);
         mStatus = findViewById(R.id.deck_status);
-        mTabMap = findViewById(R.id.deck_tab_map);
-        mTabInv = findViewById(R.id.deck_tab_inv);
-        mTabChat = findViewById(R.id.deck_tab_chat);
-        mTabMapLabel = findViewById(R.id.deck_tab_map_label);
-        mTabInvLabel = findViewById(R.id.deck_tab_inv_label);
-        mTabChatLabel = findViewById(R.id.deck_tab_chat_label);
-        mTabMapBar = findViewById(R.id.deck_tab_map_bar);
-        mTabInvBar = findViewById(R.id.deck_tab_inv_bar);
-        mTabChatBar = findViewById(R.id.deck_tab_chat_bar);
-
-        if (mTabMap != null) mTabMap.setOnClickListener(v -> selectTab(TAB_MAP));
-        if (mTabInv != null) mTabInv.setOnClickListener(v -> selectTab(TAB_INV));
-        if (mTabChat != null) mTabChat.setOnClickListener(v -> selectTab(TAB_CHAT));
+        if (mMinimap != null) mMinimap.setHoleMode(true);
+        if (mSkin != null) mSkin.setListener(this::selectTab);
+        if (mDeckRoot != null) {
+            mDeckRoot.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) -> layoutOverlays());
+        }
         selectTab(TAB_MAP);
 
         File files = mActivity.getExternalFilesDir(null);
@@ -182,18 +174,42 @@ public class ControlDeckPresentation extends Presentation {
 
     private void selectTab(int tab) {
         mSelectedTab = tab;
+        if (mSkin != null) mSkin.setTab(tab);
         if (mMinimap != null) mMinimap.setVisibility(tab == TAB_MAP ? View.VISIBLE : View.GONE);
         if (mInventory != null) mInventory.setVisibility(tab == TAB_INV ? View.VISIBLE : View.GONE);
         if (mChat != null) mChat.setVisibility(tab == TAB_CHAT ? View.VISIBLE : View.GONE);
-        styleTab(mTabMapLabel, mTabMapBar, tab == TAB_MAP);
-        styleTab(mTabInvLabel, mTabInvBar, tab == TAB_INV);
-        styleTab(mTabChatLabel, mTabChatBar, tab == TAB_CHAT);
         if (tab == TAB_CHAT && mChat != null) mChat.scrollToLatest();
     }
 
-    private static void styleTab(TextView label, View bar, boolean on) {
-        if (label != null) label.setTextColor(on ? GOLD : TAB_DIM);
-        if (bar != null) bar.setBackgroundColor(on ? GOLD : 0x00000000);
+    /** Place live overlays in the skin's holes. Fractions match the 480x800 portrait mock. */
+    private void layoutOverlays() {
+        if (mDeckRoot == null) return;
+        int w = mDeckRoot.getWidth();
+        int h = mDeckRoot.getHeight();
+        if (w <= 0 || h <= 0) return;
+        if (mDeckControlLayout != null) {
+            android.widget.FrameLayout.LayoutParams lp =
+                    (android.widget.FrameLayout.LayoutParams) mDeckControlLayout.getLayoutParams();
+            lp.height = Math.round(h * 0.10f);
+            lp.topMargin = 0;
+            mDeckControlLayout.setLayoutParams(lp);
+        }
+        if (mStatus != null) {
+            android.widget.FrameLayout.LayoutParams lp =
+                    (android.widget.FrameLayout.LayoutParams) mStatus.getLayoutParams();
+            lp.height = Math.round(h * 0.09f);
+            lp.topMargin = Math.round(h * 0.10f);
+            mStatus.setLayoutParams(lp);
+        }
+        if (mContent != null) {
+            android.widget.FrameLayout.LayoutParams lp =
+                    (android.widget.FrameLayout.LayoutParams) mContent.getLayoutParams();
+            lp.topMargin = Math.round(h * 0.20f);
+            lp.bottomMargin = Math.round(h * 0.22f);
+            lp.leftMargin = Math.round(w * 0.08f);
+            lp.rightMargin = Math.round(w * 0.08f);
+            mContent.setLayoutParams(lp);
+        }
     }
 
     private void startPoller() {
@@ -252,15 +268,16 @@ public class ControlDeckPresentation extends Presentation {
         mMapPngMissingAnnounced = false;
         long mod = mMapPng.lastModified();
         if (mod == mMapPngMod) return;
-        mMapPngMod = mod;
         final Bitmap bmp = MinimapView.decodeMapPng(mMapPng);
+        if (bmp == null) return;
         final int gen = ++mMapGen;
         mUiHandler.post(() -> {
             if (!isShowing() || mMinimap == null || gen != mMapGen) {
-                if (bmp != null && !bmp.isRecycled()) bmp.recycle();
+                if (!bmp.isRecycled()) bmp.recycle();
                 return;
             }
             mMinimap.setMapBitmap(bmp);
+            mMapPngMod = mod; // latch only after the view accepted it
         });
     }
 

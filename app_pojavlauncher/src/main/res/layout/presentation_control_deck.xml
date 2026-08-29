@@ -1,149 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Control deck shown on the secondary display (e.g. AYN Thor bottom touch screen).
-  FrameLayout root so side dialogs (quick settings) can overlay the whole deck.
-  Top-to-bottom: utility ControlLayout (fixed 132dp), status strip, MAP/INV/CHAT tabs,
-  then the selected content pane (minimap default). Never overlay inventory on the buttons.
-  Buttons drive the game on the primary display through the shared static CallbackBridge.
+  AYN Thor bottom-screen deck. The mock skin fills the Presentation.
+  Live utility ControlLayout, HUD, and MAP/INV/CHAT punch-ins overlay the skin.
+  Tabs are hit-tested on SkinDeckView (bottom ~22%). Always FLAG_NOT_FOCUSABLE.
 -->
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/deck_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black"
+    android:background="#FF1A140E"
     android:keepScreenOn="true">
 
-    <LinearLayout
+    <net.kdt.pojavlaunch.dualscreen.SkinDeckView
+        android:id="@+id/deck_skin"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+    <net.kdt.pojavlaunch.customcontrols.ControlLayout
+        android:id="@+id/deck_control_layout"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:layout_gravity="top">
+        <View style="@style/DimensionTracker"/>
+    </net.kdt.pojavlaunch.customcontrols.ControlLayout>
+
+    <net.kdt.pojavlaunch.dualscreen.StatusStripView
+        android:id="@+id/deck_status"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:layout_gravity="top"
+        android:layout_marginTop="72dp"/>
+
+    <FrameLayout
+        android:id="@+id/deck_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:layout_marginLeft="24dp"
+        android:layout_marginRight="24dp"
+        android:layout_marginTop="96dp"
+        android:layout_marginBottom="176dp">
 
-        <net.kdt.pojavlaunch.customcontrols.ControlLayout
-            android:id="@+id/deck_control_layout"
+        <net.kdt.pojavlaunch.dualscreen.MinimapView
+            android:id="@+id/deck_map"
             android:layout_width="match_parent"
-            android:layout_height="132dp">
+            android:layout_height="match_parent"/>
 
-            <View style="@style/DimensionTracker"/>
-        </net.kdt.pojavlaunch.customcontrols.ControlLayout>
-
-        <net.kdt.pojavlaunch.dualscreen.StatusStripView
-            android:id="@+id/deck_status"
+        <net.kdt.pojavlaunch.dualscreen.InventoryView
+            android:id="@+id/deck_inventory"
             android:layout_width="match_parent"
-            android:layout_height="32dp"/>
+            android:layout_height="match_parent"
+            android:visibility="gone"/>
 
-        <LinearLayout
-            android:id="@+id/deck_tabs"
+        <net.kdt.pojavlaunch.dualscreen.ChatLogView
+            android:id="@+id/deck_chat"
             android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:orientation="horizontal"
-            android:background="#FF1A1A1A">
-
-            <LinearLayout
-                android:id="@+id/deck_tab_map"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:clickable="true"
-                android:focusable="false"
-                android:orientation="vertical">
-                <TextView
-                    android:id="@+id/deck_tab_map_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:clickable="false"
-                    android:focusable="false"
-                    android:gravity="center"
-                    android:text="MAP"
-                    android:textColor="#FFFFB000"
-                    android:textSize="13sp"
-                    android:textStyle="bold"/>
-                <View
-                    android:id="@+id/deck_tab_map_bar"
-                    android:layout_width="match_parent"
-                    android:layout_height="3dp"
-                    android:background="#FFFFB000"/>
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/deck_tab_inv"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:clickable="true"
-                android:focusable="false"
-                android:orientation="vertical">
-                <TextView
-                    android:id="@+id/deck_tab_inv_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:clickable="false"
-                    android:focusable="false"
-                    android:gravity="center"
-                    android:text="INV"
-                    android:textColor="#FF8A8A8A"
-                    android:textSize="13sp"
-                    android:textStyle="bold"/>
-                <View
-                    android:id="@+id/deck_tab_inv_bar"
-                    android:layout_width="match_parent"
-                    android:layout_height="3dp"
-                    android:background="#00000000"/>
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/deck_tab_chat"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:clickable="true"
-                android:focusable="false"
-                android:orientation="vertical">
-                <TextView
-                    android:id="@+id/deck_tab_chat_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:clickable="false"
-                    android:focusable="false"
-                    android:gravity="center"
-                    android:text="CHAT"
-                    android:textColor="#FF8A8A8A"
-                    android:textSize="13sp"
-                    android:textStyle="bold"/>
-                <View
-                    android:id="@+id/deck_tab_chat_bar"
-                    android:layout_width="match_parent"
-                    android:layout_height="3dp"
-                    android:background="#00000000"/>
-            </LinearLayout>
-        </LinearLayout>
-
-        <FrameLayout
-            android:id="@+id/deck_content"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1">
-
-            <net.kdt.pojavlaunch.dualscreen.MinimapView
-                android:id="@+id/deck_map"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"/>
-
-            <net.kdt.pojavlaunch.dualscreen.InventoryView
-                android:id="@+id/deck_inventory"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:visibility="gone"/>
-
-            <net.kdt.pojavlaunch.dualscreen.ChatLogView
-                android:id="@+id/deck_chat"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:visibility="gone"/>
-        </FrameLayout>
-    </LinearLayout>
-
+            android:layout_height="match_parent"
+            android:visibility="gone"/>
+    </FrameLayout>
 </FrameLayout>
