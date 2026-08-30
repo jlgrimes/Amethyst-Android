@@ -52,6 +52,20 @@ public class DualScreenManager implements DisplayManager.DisplayListener {
         return mPresentation != null ? mPresentation.getDeckRoot() : null;
     }
 
+    /** Currently showing Presentation, or null. Used by DebugDeck DUMP_FRAME PixelCopy. */
+    public ControlDeckPresentation getPresentation() {
+        return mPresentation;
+    }
+
+    /** Overlay display id of the attached deck, or -1. */
+    public int getAttachedDisplayId() {
+        try {
+            return mPresentation != null ? mPresentation.getDisplay().getDisplayId() : -1;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
     /** Pick the best secondary display: prefer one flagged FLAG_PRESENTATION, never the default. */
     private Display findPresentationDisplay() {
         if (mDisplayManager == null) return null;
