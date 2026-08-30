@@ -9,6 +9,7 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.Process;
+import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -21,12 +22,18 @@ import net.kdt.pojavlaunch.utils.NotificationUtils;
 import java.lang.ref.WeakReference;
 
 public class GameService extends Service {
+    private static final String TAG = "GameService";
     private static final WeakReference<Service> sGameService = new WeakReference<>(null);
     private final LocalBinder mLocalBinder = new LocalBinder();
+    private boolean mEnteredForeground;
 
     @Override
     public void onCreate() {
         Tools.buildNotificationChannel(getApplicationContext());
+        // Must enter the foreground immediately. startForegroundService() starts a ~20s
+        // clock; if MainActivity keeps doing work on this same main thread before
+        // onStartCommand runs, Android shows an ANR / "did not then call startForeground".
+        enterForeground();
     }
 
     @Override
@@ -36,6 +43,11 @@ public class GameService extends Service {
             Process.killProcess(Process.myPid());
             return START_NOT_STICKY;
         }
+        enterForeground();
+        return START_NOT_STICKY; // non-sticky so android wont try restarting the game after the user uses the "Quit" button
+    }
+
+    private void enterForeground() {
         Intent killIntent = new Intent(getApplicationContext(), GameService.class);
         killIntent.putExtra("kill", true);
         PendingIntent pendingKillIntent = PendingIntent.getService(this, NotificationUtils.PENDINGINTENT_CODE_KILL_GAME_SERVICE
@@ -53,12 +65,17 @@ public class GameService extends Service {
                 .setNotificationSilent();
 
         Notification notification = notificationBuilder.build();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NotificationUtils.NOTIFICATION_ID_GAME_SERVICE, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST);
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(NotificationUtils.NOTIFICATION_ID_GAME_SERVICE, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NotificationUtils.NOTIFICATION_ID_GAME_SERVICE, notification);
         } else {
             startForeground(NotificationUtils.NOTIFICATION_ID_GAME_SERVICE, notification);
         }
-        return START_NOT_STICKY; // non-sticky so android wont try restarting the game after the user uses the "Quit" button
+        if (!mEnteredForeground) {
+            mEnteredForeground = true;
+            Log.i(TAG, "startForeground ok");
+        }
     }
 
     @Override
