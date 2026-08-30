@@ -4,15 +4,17 @@ import android.app.Activity;
 import android.app.Presentation;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.util.Log;
 import android.view.Display;
 import android.view.View;
 import android.view.ViewGroup;
-import android.graphics.drawable.ColorDrawable;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 
 import net.kdt.pojavlaunch.LwjglGlfwKeycode;
 import net.kdt.pojavlaunch.R;
@@ -45,8 +47,15 @@ import java.util.List;
  * Note: the "Keyboard" button triggers the real system IME, which the AYN Thor pins to the bottom
  * screen via its firmware setting (ime_show_on_second) — no custom keyboard is needed. Chat on this
  * deck is read-only and never takes focus ({@code FLAG_NOT_FOCUSABLE}).
+ *
+ * Live MAP is drawn by {@link SkinDeckView} into the leather hole. INV/CHAT overlays sit in
+ * {@link SkinHoles} scaled into the letterboxed dest. File IPC is the existing bus:
+ * {@code state.json} (seq) + {@code map.png} + {@code icons/} + {@code command.json}, with
+ * split-file fallback ({@code inventory.json}/{@code chat.json}/{@code map.json}/{@code hud.json}).
  */
 public class ControlDeckPresentation extends Presentation {
+
+    private static final String TAG = "ControlDeckPresentation";
 
     // Grid column X expressions (4 columns), evaluated against the deck's geometry.
     private static final String COL_1 = "${margin}";
@@ -74,21 +83,31 @@ public class ControlDeckPresentation extends Presentation {
     private StatusStripView mStatus;
     private final RectF mSkinDest = new RectF();
     private int mSelectedTab = TAB_MAP;
+    private int mLastDestW, mLastDestH;
 
+    private File mDeckDir;
+    private File mStateJson;
     private File mMapPng;
     private File mMapJson;
     private File mHudJson;
     private File mChatJson;
+    private File mInvJson;
+    private File mIconDir;
+    private File mCommandJson;
 
     private HandlerThread mIoThread;
     private Handler mIoHandler;
-    private long mMapPngMod = -1;
+    private volatile long mMapPngMod = -1;
+    private volatile boolean mMapApplyPending;
     private long mMapJsonMod = -1;
     private long mHudMod = -1;
     private long mChatMod = -1;
+    private long mInvMod = -1;
+    private long mStateMod = -1;
     private long mMapSeq = -1;
     private long mHudSeq = -1;
     private long mChatSeq = -1;
+    private long mStateSeq = -1;
     private boolean mMapPngMissingAnnounced;
     private volatile int mMapGen;
 
@@ -116,6 +135,10 @@ public class ControlDeckPresentation extends Presentation {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             getWindow().setBackgroundDrawable(new ColorDrawable(0xFF1A140E));
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.alpha = 1f;
+            lp.dimAmount = 0f;
+            getWindow().setAttributes(lp);
         }
 
         setContentView(R.layout.presentation_control_deck);
@@ -137,29 +160,72 @@ public class ControlDeckPresentation extends Presentation {
         mInventory = findViewById(R.id.deck_inventory);
         mChat = findViewById(R.id.deck_chat);
         mStatus = findViewById(R.id.deck_status);
-        if (mMinimap != null) mMinimap.setHoleMode(true);
-        if (mSkin != null) mSkin.setListener(this::selectTab);
+        if (mMinimap != null) {
+            mMinimap.setHoleMode(true);
+            mMinimap.setVisibility(View.GONE); // MAP punch is SkinDeckView (harness-proven)
+        }
+        if (mInventory != null) {
+            mInventory.setHoleMode(true);
+            mInventory.setLiveFeed(true);
+        }
+        if (mSkin != null) {
+            mSkin.setListener(this::selectTab);
+            mSkin.setLayoutListener(dest -> layoutOverlays());
+        }
         if (mDeckRoot != null) {
             mDeckRoot.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) -> layoutOverlays());
         }
-        selectTab(TAB_MAP);
-
-        File files = mActivity.getExternalFilesDir(null);
-        if (files != null) {
-            File deck = new File(files, ".minecraft/thor_deck");
-            // Inventory + command.json stay on InventoryView's own HandlerThread (unchanged).
-            if (mInventory != null) {
-                mInventory.setInventoryFile(new File(deck, "inventory.json"));
-                mInventory.setIconDir(new File(deck, "icons"));
-                mInventory.setCommandFile(new File(deck, "command.json"));
-            }
-            mMapPng = new File(deck, "map.png");
-            mMapJson = new File(deck, "map.json");
-            mHudJson = new File(deck, "hud.json");
-            mChatJson = new File(deck, "chat.json");
+        resolveDeckDir();
+        if (mInventory != null) {
+            mInventory.setInventoryFile(mInvJson);
+            mInventory.setIconDir(mIconDir);
+            mInventory.setCommandFile(mCommandJson);
         }
+        selectTab(TAB_MAP);
+        layoutOverlays();
 
         startPoller();
+        Log.i(TAG, "onCreate display=" + getDisplay().getDisplayId()
+                + " FLAG_NOT_FOCUSABLE+FLAG_KEEP_SCREEN_ON"
+                + " deck=" + (mDeckDir == null ? "null" : mDeckDir.getAbsolutePath()));
+    }
+
+    /**
+     * Existing file bus. Prefer a dir that already has state.json / map.png / inventory.json:
+     * {@code .minecraft/thor_deck} (Pojav gameDir), then {@code thor_deck/}, then {@code deck/}.
+     */
+    private void resolveDeckDir() {
+        File files = mActivity.getExternalFilesDir(null);
+        if (files == null || !files.exists()) files = mActivity.getFilesDir();
+        if (files == null) return;
+        File[] candidates = new File[] {
+                new File(files, ".minecraft/thor_deck"),
+                new File(files, "thor_deck"),
+                new File(files, "deck"),
+        };
+        File chosen = candidates[0];
+        for (int i = 0; i < candidates.length; i++) {
+            File c = candidates[i];
+            if (new File(c, "state.json").exists() || new File(c, "map.png").exists()
+                    || new File(c, "inventory.json").exists()) {
+                chosen = c;
+                break;
+            }
+        }
+        mDeckDir = chosen;
+        //noinspection ResultOfMethodCallIgnored
+        mDeckDir.mkdirs();
+        File icons = new File(mDeckDir, "icons");
+        //noinspection ResultOfMethodCallIgnored
+        icons.mkdirs();
+        mStateJson = new File(mDeckDir, "state.json");
+        mMapPng = new File(mDeckDir, "map.png");
+        mMapJson = new File(mDeckDir, "map.json");
+        mHudJson = new File(mDeckDir, "hud.json");
+        mChatJson = new File(mDeckDir, "chat.json");
+        mInvJson = new File(mDeckDir, "inventory.json");
+        mIconDir = icons;
+        mCommandJson = new File(mDeckDir, "command.json");
     }
 
     @Override
@@ -177,34 +243,52 @@ public class ControlDeckPresentation extends Presentation {
     private void selectTab(int tab) {
         mSelectedTab = tab;
         if (mSkin != null) mSkin.setTab(tab);
-        if (mMinimap != null) mMinimap.setVisibility(tab == TAB_MAP ? View.VISIBLE : View.GONE);
+        if (mMinimap != null) mMinimap.setVisibility(View.GONE);
         if (mInventory != null) mInventory.setVisibility(tab == TAB_INV ? View.VISIBLE : View.GONE);
-        if (mChat != null) mChat.setVisibility(tab == TAB_CHAT ? View.VISIBLE : View.GONE);
-        if (tab == TAB_CHAT && mChat != null) mChat.scrollToLatest();
+        if (mChat != null) {
+            mChat.setVisibility(tab == TAB_CHAT ? View.VISIBLE : View.GONE);
+            if (tab == TAB_CHAT) mChat.scrollToLatest();
+        }
+        Log.i(TAG, "selectTab " + tab);
     }
 
-    /** Place live overlays in the letterboxed skin dest, not raw view percentages. */
+    /**
+     * Place live overlays from measured mock rects ({@link SkinHoles}) scaled into the
+     * letterboxed skin dest. Not leftover 480×800 view percentages.
+     */
     private void layoutOverlays() {
-        if (mDeckRoot == null) return;
+        if (mDeckRoot == null || mSkin == null) return;
         int w = mDeckRoot.getWidth();
         int h = mDeckRoot.getHeight();
         if (w <= 0 || h <= 0) return;
 
-        float sl = 0f, st = 0f, sw = w, sh = h;
-        if (mSkin != null) {
-            mSkin.getSkinDest(mSkinDest);
-            if (!mSkinDest.isEmpty()) {
-                sl = mSkinDest.left + mSkin.getLeft();
-                st = mSkinDest.top + mSkin.getTop();
-                sw = mSkinDest.width();
-                sh = mSkinDest.height();
-            }
-        }
-        if (sw <= 0f || sh <= 0f) return;
+        mSkin.getSkinDest(mSkinDest);
+        if (mSkinDest.isEmpty()) return;
+        RectF dest = new RectF(mSkinDest);
+        dest.offset(mSkin.getLeft(), mSkin.getTop());
 
+        // Grouping layer fills the root so SkinHoles.place children use dest coords.
+        if (mContent != null && mContent.getParent() instanceof FrameLayout) {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) mContent.getLayoutParams();
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.leftMargin = 0;
+            lp.topMargin = 0;
+            lp.rightMargin = 0;
+            lp.bottomMargin = 0;
+            mContent.setLayoutParams(lp);
+        }
+
+        SkinHoles.place(mMinimap, dest, SkinHoles.MAP);
+        SkinHoles.place(mInventory, dest, SkinHoles.INV);
+        SkinHoles.place(mChat, dest, SkinHoles.CHAT);
+
+        // Utility row + HUD sit in the dest band above the leather holes.
+        float sl = dest.left, st = dest.top, sw = dest.width(), sh = dest.height();
+        if (sw <= 0f || sh <= 0f) return;
         if (mDeckControlLayout != null) {
-            android.widget.FrameLayout.LayoutParams lp =
-                    (android.widget.FrameLayout.LayoutParams) mDeckControlLayout.getLayoutParams();
+            FrameLayout.LayoutParams lp =
+                    (FrameLayout.LayoutParams) mDeckControlLayout.getLayoutParams();
             lp.height = Math.round(sh * 0.10f);
             lp.topMargin = Math.round(st);
             lp.leftMargin = Math.round(sl);
@@ -212,22 +296,23 @@ public class ControlDeckPresentation extends Presentation {
             mDeckControlLayout.setLayoutParams(lp);
         }
         if (mStatus != null) {
-            android.widget.FrameLayout.LayoutParams lp =
-                    (android.widget.FrameLayout.LayoutParams) mStatus.getLayoutParams();
+            FrameLayout.LayoutParams lp =
+                    (FrameLayout.LayoutParams) mStatus.getLayoutParams();
             lp.height = Math.round(sh * 0.09f);
             lp.topMargin = Math.round(st + sh * 0.10f);
             lp.leftMargin = Math.round(sl);
             lp.rightMargin = Math.round(w - (sl + sw));
             mStatus.setLayoutParams(lp);
         }
-        if (mContent != null) {
-            android.widget.FrameLayout.LayoutParams lp =
-                    (android.widget.FrameLayout.LayoutParams) mContent.getLayoutParams();
-            lp.topMargin = Math.round(st + sh * 0.20f);
-            lp.bottomMargin = Math.round(h - (st + sh * 0.78f));
-            lp.leftMargin = Math.round(sl + sw * 0.08f);
-            lp.rightMargin = Math.round(w - (sl + sw * 0.92f));
-            mContent.setLayoutParams(lp);
+
+        int dw = Math.round(dest.width()), dh = Math.round(dest.height());
+        if (dw != mLastDestW || dh != mLastDestH) {
+            mLastDestW = dw;
+            mLastDestH = dh;
+            Log.i(TAG, "holes dest=" + dw + "x" + dh
+                    + " map=" + SkinHoles.scale(dest, SkinHoles.MAP).toShortString()
+                    + " inv=" + SkinHoles.scale(dest, SkinHoles.INV).toShortString()
+                    + " chat=" + SkinHoles.scale(dest, SkinHoles.CHAT).toShortString());
         }
     }
 
@@ -253,22 +338,91 @@ public class ControlDeckPresentation extends Presentation {
 
     /**
      * File bus poller. All reads + JSON/PNG parse happen on this HandlerThread.
-     * Inventory.json is owned by {@link InventoryView} so command.json tap-to-move stays intact.
+     * {@code state.json} is the primary seq bus; split files are fallback.
+     * {@code command.json} tap-to-move stays on {@link InventoryView}.
      */
     private final Runnable mPoll = new Runnable() {
         @Override
         public void run() {
             try {
+                pollState();
                 pollMapPng();
                 pollMapJson();
                 pollHud();
-                pollChat();
+                pollChatFallback();
+                pollInvFallback();
             } catch (Exception ignored) {
             }
             Handler io = mIoHandler;
             if (io != null) io.postDelayed(this, POLL_MS);
         }
     };
+
+    private void pollState() {
+        if (mStateJson == null || !mStateJson.exists()) return;
+        long mod = mStateJson.lastModified();
+        if (mod == mStateMod) return;
+        String raw = readFileQuiet(mStateJson);
+        if (raw == null || raw.isEmpty()) return;
+        JSONObject o;
+        try {
+            o = new JSONObject(raw);
+        } catch (Exception e) {
+            return;
+        }
+        long seq = o.optLong("seq", 0);
+        if (seq > 0 && seq <= mStateSeq) return;
+        mStateMod = mod;
+        if (seq > 0) mStateSeq = seq;
+        Log.i(TAG, "state.json path=" + mStateJson.getAbsolutePath() + " seq=" + seq + " mod=" + mod);
+
+        JSONObject map = o.optJSONObject("map");
+        if (map != null) {
+            final MinimapView.MapMeta meta = parseMap(map.toString());
+            if (meta != null) {
+                if (meta.seq > 0) mMapSeq = meta.seq;
+                mUiHandler.post(() -> {
+                    if (!isShowing()) return;
+                    if (mSkin != null) mSkin.setMeta(meta);
+                    if (mMinimap != null) mMinimap.setMeta(meta);
+                });
+            }
+        }
+
+        JSONObject inv = o.optJSONObject("inventory");
+        if (inv == null && o.has("slots")) inv = o;
+        if (inv != null) {
+            final String invJson = inv.toString();
+            mUiHandler.post(() -> {
+                if (!isShowing() || mInventory == null) return;
+                mInventory.applyJson(invJson);
+            });
+        }
+
+        JSONObject chat = o.optJSONObject("chat");
+        JSONArray linesArr = chat != null ? chat.optJSONArray("lines") : o.optJSONArray("lines");
+        long chatSeq = chat != null ? chat.optLong("seq", seq) : seq;
+        if (linesArr != null) {
+            ChatParse parsed = new ChatParse();
+            parsed.seq = chatSeq;
+            parsed.lines = new ArrayList<>();
+            for (int i = 0; i < linesArr.length(); i++) {
+                JSONObject line = linesArr.optJSONObject(i);
+                if (line == null) continue;
+                parsed.lines.add(new ChatLogView.ChatLine(
+                        line.optString("from", ""),
+                        line.optString("text", ""),
+                        line.optString("kind", "chat")));
+            }
+            if (parsed.seq > 0) mChatSeq = parsed.seq;
+            final long applySeq = parsed.seq;
+            final List<ChatLogView.ChatLine> lines = parsed.lines;
+            mUiHandler.post(() -> {
+                if (!isShowing() || mChat == null) return;
+                mChat.setLines(lines, applySeq);
+            });
+        }
+    }
 
     private void pollMapPng() {
         boolean exists = mMapPng != null && mMapPng.exists();
@@ -278,8 +432,9 @@ public class ControlDeckPresentation extends Presentation {
                 mMapPngMod = -1;
                 final int gen = ++mMapGen;
                 mUiHandler.post(() -> {
-                    if (!isShowing() || gen != mMapGen || mMinimap == null) return;
-                    mMinimap.setMapBitmap(null);
+                    if (!isShowing() || gen != mMapGen) return;
+                    if (mSkin != null) mSkin.setLiveMap(null);
+                    if (mMinimap != null) mMinimap.setMapBitmap(null);
                 });
             }
             return;
@@ -287,16 +442,25 @@ public class ControlDeckPresentation extends Presentation {
         mMapPngMissingAnnounced = false;
         long mod = mMapPng.lastModified();
         if (mod == mMapPngMod) return;
+        if (mMapApplyPending) return;
         final Bitmap bmp = MinimapView.decodeMapPng(mMapPng);
         if (bmp == null) return;
+        mMapApplyPending = true;
         final int gen = ++mMapGen;
         mUiHandler.post(() -> {
-            if (!isShowing() || mMinimap == null || gen != mMapGen) {
-                if (!bmp.isRecycled()) bmp.recycle();
-                return;
+            try {
+                if (!isShowing() || mSkin == null || gen != mMapGen) {
+                    if (!bmp.isRecycled()) bmp.recycle();
+                    Log.w(TAG, "map.png apply dropped — will retry, not latching mMapPngMod");
+                    return;
+                }
+                mSkin.setLiveMap(bmp);
+                mMapPngMod = mod;
+                Log.i(TAG, "map.png applied " + bmp.getWidth() + "x" + bmp.getHeight()
+                        + " path=" + mMapPng.getAbsolutePath() + " mod=" + mod);
+            } finally {
+                mMapApplyPending = false;
             }
-            mMinimap.setMapBitmap(bmp);
-            mMapPngMod = mod; // latch only after the view accepted it
         });
     }
 
@@ -310,8 +474,9 @@ public class ControlDeckPresentation extends Presentation {
         if (meta.seq > 0 && meta.seq <= mMapSeq) return;
         if (meta.seq > 0) mMapSeq = meta.seq;
         mUiHandler.post(() -> {
-            if (!isShowing() || mMinimap == null) return;
-            mMinimap.setMeta(meta);
+            if (!isShowing()) return;
+            if (mSkin != null) mSkin.setMeta(meta);
+            if (mMinimap != null) mMinimap.setMeta(meta);
         });
     }
 
@@ -330,20 +495,39 @@ public class ControlDeckPresentation extends Presentation {
         });
     }
 
-    private void pollChat() {
+    private void pollChatFallback() {
+        if (mStateJson != null && mStateJson.exists()) return; // state.json owns chat
         if (mChatJson == null || !mChatJson.exists()) return;
         long mod = mChatJson.lastModified();
         if (mod == mChatMod) return;
-        mChatMod = mod;
         ChatParse parsed = parseChat(readFileQuiet(mChatJson));
         if (parsed == null) return;
         if (parsed.seq > 0 && parsed.seq <= mChatSeq) return;
+        mChatMod = mod;
         if (parsed.seq > 0) mChatSeq = parsed.seq;
         final long seq = parsed.seq;
         final List<ChatLogView.ChatLine> lines = parsed.lines;
         mUiHandler.post(() -> {
-            if (!isShowing() || mChat == null) return;
+            if (!isShowing() || mChat == null) {
+                mChatMod = -1;
+                mChatSeq = -1;
+                return;
+            }
             mChat.setLines(lines, seq);
+        });
+    }
+
+    private void pollInvFallback() {
+        if (mStateJson != null && mStateJson.exists()) return;
+        if (mInvJson == null || !mInvJson.exists()) return;
+        long mod = mInvJson.lastModified();
+        if (mod == mInvMod) return;
+        mInvMod = mod;
+        final String json = readFileQuiet(mInvJson);
+        if (json == null) return;
+        mUiHandler.post(() -> {
+            if (!isShowing() || mInventory == null) return;
+            mInventory.applyJson(json);
         });
     }
 
