@@ -3,6 +3,7 @@ package net.kdt.pojavlaunch.dualscreen;
 import android.app.Activity;
 import android.app.Presentation;
 import android.graphics.Bitmap;
+import android.graphics.RectF;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -71,6 +72,7 @@ public class ControlDeckPresentation extends Presentation {
     private InventoryView mInventory;
     private ChatLogView mChat;
     private StatusStripView mStatus;
+    private final RectF mSkinDest = new RectF();
     private int mSelectedTab = TAB_MAP;
 
     private File mMapPng;
@@ -181,33 +183,50 @@ public class ControlDeckPresentation extends Presentation {
         if (tab == TAB_CHAT && mChat != null) mChat.scrollToLatest();
     }
 
-    /** Place live overlays in the skin's holes. Fractions match the 480x800 portrait mock. */
+    /** Place live overlays in the letterboxed skin dest, not raw view percentages. */
     private void layoutOverlays() {
         if (mDeckRoot == null) return;
         int w = mDeckRoot.getWidth();
         int h = mDeckRoot.getHeight();
         if (w <= 0 || h <= 0) return;
+
+        float sl = 0f, st = 0f, sw = w, sh = h;
+        if (mSkin != null) {
+            mSkin.getSkinDest(mSkinDest);
+            if (!mSkinDest.isEmpty()) {
+                sl = mSkinDest.left + mSkin.getLeft();
+                st = mSkinDest.top + mSkin.getTop();
+                sw = mSkinDest.width();
+                sh = mSkinDest.height();
+            }
+        }
+        if (sw <= 0f || sh <= 0f) return;
+
         if (mDeckControlLayout != null) {
             android.widget.FrameLayout.LayoutParams lp =
                     (android.widget.FrameLayout.LayoutParams) mDeckControlLayout.getLayoutParams();
-            lp.height = Math.round(h * 0.10f);
-            lp.topMargin = 0;
+            lp.height = Math.round(sh * 0.10f);
+            lp.topMargin = Math.round(st);
+            lp.leftMargin = Math.round(sl);
+            lp.rightMargin = Math.round(w - (sl + sw));
             mDeckControlLayout.setLayoutParams(lp);
         }
         if (mStatus != null) {
             android.widget.FrameLayout.LayoutParams lp =
                     (android.widget.FrameLayout.LayoutParams) mStatus.getLayoutParams();
-            lp.height = Math.round(h * 0.09f);
-            lp.topMargin = Math.round(h * 0.10f);
+            lp.height = Math.round(sh * 0.09f);
+            lp.topMargin = Math.round(st + sh * 0.10f);
+            lp.leftMargin = Math.round(sl);
+            lp.rightMargin = Math.round(w - (sl + sw));
             mStatus.setLayoutParams(lp);
         }
         if (mContent != null) {
             android.widget.FrameLayout.LayoutParams lp =
                     (android.widget.FrameLayout.LayoutParams) mContent.getLayoutParams();
-            lp.topMargin = Math.round(h * 0.20f);
-            lp.bottomMargin = Math.round(h * 0.22f);
-            lp.leftMargin = Math.round(w * 0.08f);
-            lp.rightMargin = Math.round(w * 0.08f);
+            lp.topMargin = Math.round(st + sh * 0.20f);
+            lp.bottomMargin = Math.round(h - (st + sh * 0.78f));
+            lp.leftMargin = Math.round(sl + sw * 0.08f);
+            lp.rightMargin = Math.round(w - (sl + sw * 0.92f));
             mContent.setLayoutParams(lp);
         }
     }
