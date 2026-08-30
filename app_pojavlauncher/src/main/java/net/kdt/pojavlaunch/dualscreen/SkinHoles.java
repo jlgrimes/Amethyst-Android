@@ -28,6 +28,12 @@ public final class SkinHoles {
     public static final Rect INV = new Rect(144, 268, 1408, 824);
     /** Chat parchment (covers painted lines). */
     public static final Rect CHAT = new Rect(210, 327, 1305, 840);
+    /**
+     * Persistent HP/hunger/coords strip (covers painted mock HUD on every tab).
+     * Measured 2026-08-30 / harness-proven: hearts ~168-747x189-221, gold coords to x~1347;
+     * utility bar ends ~y120; leather map frame starts ~y280.
+     */
+    public static final Rect HUD = new Rect(144, 168, 1408, 256);
 
     private SkinHoles() {}
 
