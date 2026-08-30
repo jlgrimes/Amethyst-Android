@@ -142,7 +142,11 @@ android {
             // Don't set to true or java.awt will be a.a or something similar.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.customRelease
+            // dualscreen-deck-v2: GPLAY_KEYSTORE_PASSWORD / aamc_upload.jks mismatch on this
+            // fork fails packageRelease and blocks assembleDebug in android.yml. Use debug
+            // signing so CI can finish and upload an installable debug APK for the emulator.
+            // Restore customRelease once the Play upload keystore secret is fixed.
+            signingConfig signingConfigs.customDebug
             // defaultConfig already set
             // multiDexEnabled = true
             // debuggable = true

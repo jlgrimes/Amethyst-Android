@@ -33,6 +33,7 @@ import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -60,6 +61,7 @@ import net.kdt.pojavlaunch.customcontrols.ControlJoystickData;
 import net.kdt.pojavlaunch.customcontrols.ControlLayout;
 import net.kdt.pojavlaunch.customcontrols.CustomControls;
 import net.kdt.pojavlaunch.customcontrols.EditorExitable;
+import net.kdt.pojavlaunch.dualscreen.DualScreenManager;
 import net.kdt.pojavlaunch.customcontrols.keyboard.LwjglCharSender;
 import net.kdt.pojavlaunch.customcontrols.keyboard.TouchCharInput;
 import net.kdt.pojavlaunch.customcontrols.mouse.GyroControl;
@@ -103,6 +105,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     private View mDrawerPullButton;
     private GyroControl mGyroControl = null;
     private ControlLayout mControlLayout;
+    private DualScreenManager mDualScreen;
     private HotbarView mHotbarView;
     private FrameLayout contentFrame;
 
@@ -120,6 +123,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     private GameService.LocalBinder mServiceBinder;
 
     private QuickSettingSideDialog mQuickSettingSideDialog;
+    private boolean mFinishCreateAfterGameService;
+    private String mGameDirPath;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -128,12 +133,23 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
 
         minecraftProfile = LauncherProfiles.getCurrentProfile();
 
-        String gameDirPath = Tools.getGameDirPath(minecraftProfile).getAbsolutePath();
-        MCOptionUtils.load(gameDirPath);
+        mGameDirPath = Tools.getGameDirPath(minecraftProfile).getAbsolutePath();
+        MCOptionUtils.load(mGameDirPath);
 
         Intent gameServiceIntent = new Intent(this, GameService.class);
-        // Start the service a bit early
+        // Start the service, then RETURN. startForegroundService() starts a ~20s
+        // clock; GameService.onCreate/onStartCommand cannot run until this
+        // onCreate returns (same main thread). Layout / DualScreen / version JSON
+        // continue in onServiceConnected after startForeground has been called.
         ContextCompat.startForegroundService(this, gameServiceIntent);
+        bindService(gameServiceIntent, this, 0);
+    }
+
+    /** Rest of former onCreate, run only after GameService is bound (FGS already up). */
+    private void finishCreateAfterGameService() {
+        if (mFinishCreateAfterGameService) return;
+        mFinishCreateAfterGameService = true;
+        String gameDirPath = mGameDirPath;
         initLayout(R.layout.activity_basemain);
         CallbackBridge.addGrabListener(touchpad);
         CallbackBridge.addGrabListener(minecraftGLView);
@@ -174,6 +190,21 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         MCOptionUtils.addMCOptionListener(optionListener);
         mControlLayout.setModifiable(false);
 
+        // Dual-screen: if a secondary display (e.g. AYN Thor bottom screen) is present, host a
+        // curated utility control deck on it (see ControlDeckPresentation). Movement/interaction
+        // stay on the device's physical controls; the primary screen is kept clean (see
+        // loadControls()). No-op single-screen fallback otherwise. Shown/dismissed in onResume/onPause.
+        mDualScreen = new DualScreenManager(this, new DualScreenManager.DeckCallback() {
+            @Override
+            public void onDeckAttached() {
+                loadControls();
+            }
+            @Override
+            public void onDeckDetached() {
+                loadControls();
+            }
+        });
+
         // Listen to IME insets animation
         ViewCompat.setWindowInsetsAnimationCallback(contentFrame, new WindowInsetsAnimationCompat.Callback(WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_STOP) {
             @Override
@@ -210,8 +241,10 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         // Set the activity for the executor. Must do this here, or else Tools.showErrorRemote() may not
         // execute the correct method
         ContextExecutor.setActivity(this);
-        //Now, attach to the service. The game will only start when this happens, to make sure that we know the right state.
-        bindService(gameServiceIntent, this, 0);
+        // GameService is already bound from onCreate. If we are already resumed,
+        // DualScreen onResume did not run (mDualScreen was still null).
+        if (mDualScreen != null) mDualScreen.onResume();
+        if (PREF_ENABLE_GYRO && mGyroControl != null) mGyroControl.enable();
     }
 
     protected void initLayout(int resId) {
@@ -296,6 +329,14 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     private void loadControls() {
+        // When the utility deck is on a secondary display, keep the primary screen clean: load no
+        // on-screen controls here (movement/interaction is handled by the device's physical controls).
+        if (mDualScreen != null && mDualScreen.hasSecondaryDisplay()) {
+            mControlLayout.loadLayout(new CustomControls());
+            mDrawerPullButton.setVisibility(View.GONE);
+            mControlLayout.setControlVisible(false);
+            return;
+        }
         try {
             // Load keys
             mControlLayout.loadLayout(
@@ -319,6 +360,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     @Override
     public void onAttachedToWindow() {
         // Post to get the correct display dimensions after layout.
+        if (mControlLayout == null) return;
         LauncherPreferences.computeNotchSize(this);
         mControlLayout.post(()->{
             Tools.getDisplayMetrics(this);
@@ -345,14 +387,16 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     @Override
     public void onResume() {
         super.onResume();
-        if(PREF_ENABLE_GYRO) mGyroControl.enable();
+        if(PREF_ENABLE_GYRO && mGyroControl != null) mGyroControl.enable();
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_FOCUSED, 1);
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_HOVERED, 1);
+        if(mDualScreen != null) mDualScreen.onResume();
     }
 
     @Override
     protected void onPause() {
-        mGyroControl.disable();
+        if(mDualScreen != null) mDualScreen.onPause();
+        if (mGyroControl != null) mGyroControl.disable();
         if (CallbackBridge.isGrabbing()){
             sendKeyPress(LwjglGlfwKeycode.GLFW_KEY_ESCAPE);
         }
@@ -380,8 +424,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        CallbackBridge.removeGrabListener(touchpad);
-        CallbackBridge.removeGrabListener(minecraftGLView);
+        if (touchpad != null) CallbackBridge.removeGrabListener(touchpad);
+        if (minecraftGLView != null) CallbackBridge.removeGrabListener(minecraftGLView);
         ContextExecutor.clearActivity();
     }
 
@@ -392,6 +436,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         // Layout resize is practically guaranteed on a configuration change, and `onConfigurationChanged`
         // does not implicitly start a layout. So, request a layout and expect the screen dimensions to be valid after the]
         // post.
+        if (mControlLayout == null) return;
         mControlLayout.requestLayout();
         mControlLayout.post(()->{
             // Child of mControlLayout, so refreshing size here is correct
@@ -531,25 +576,28 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     private void openQuickSettings() {
-        if(mQuickSettingSideDialog == null) {
-            mQuickSettingSideDialog = new QuickSettingSideDialog(this, mControlLayout) {
-                @Override
-                public void onResolutionChanged() {
-                    minecraftGLView.refreshSize();
-                    mHotbarView.onResolutionChanged();
-                }
+        // Host the settings dialog on the deck (secondary screen) when available, so it slides in
+        // there instead of covering the game on the primary display. Rebuilt each time because the
+        // deck's view (and thus the parent) is recreated across pause/resume.
+        ViewGroup sideParent = (mDualScreen != null && mDualScreen.getDeckRoot() != null)
+                ? mDualScreen.getDeckRoot() : mControlLayout;
+        mQuickSettingSideDialog = new QuickSettingSideDialog(sideParent.getContext(), sideParent) {
+            @Override
+            public void onResolutionChanged() {
+                minecraftGLView.refreshSize();
+                mHotbarView.onResolutionChanged();
+            }
 
-                @Override
-                public void onGyroStateChanged() {
-                    mGyroControl.updateOrientation();
-                    if (PREF_ENABLE_GYRO) {
-                        mGyroControl.enable();
-                    } else {
-                        mGyroControl.disable();
-                    }
+            @Override
+            public void onGyroStateChanged() {
+                mGyroControl.updateOrientation();
+                if (PREF_ENABLE_GYRO) {
+                    mGyroControl.enable();
+                } else {
+                    mGyroControl.disable();
                 }
-            };
-        }
+            }
+        };
         mQuickSettingSideDialog.appear(true);
     }
 
@@ -582,6 +630,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     public static void switchKeyboardState() {
+        // Use the real system IME. On the AYN Thor, firmware setting ime_show_on_second pins it to
+        // the bottom screen automatically, so no custom keyboard is needed.
         if(touchCharInput != null) touchCharInput.switchKeyboardState();
     }
 
@@ -682,6 +732,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     public void onServiceConnected(ComponentName name, IBinder service) {
         GameService.LocalBinder localBinder = (GameService.LocalBinder) service;
         mServiceBinder = localBinder;
+        finishCreateAfterGameService();
         minecraftGLView.start(localBinder.isActive, touchpad);
         localBinder.isActive = true;
     }

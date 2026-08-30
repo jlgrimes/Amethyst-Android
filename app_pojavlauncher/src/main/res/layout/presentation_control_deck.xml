@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AYN Thor bottom-screen deck. The mock skin fills the Presentation.
+  Live utility ControlLayout, HUD, and MAP/INV/CHAT punch-ins overlay the skin.
+  Tabs are hit-tested on SkinDeckView (bottom ~22%). Always FLAG_NOT_FOCUSABLE.
+-->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/deck_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF1A140E"
+    android:keepScreenOn="true">
+
+    <net.kdt.pojavlaunch.dualscreen.SkinDeckView
+        android:id="@+id/deck_skin"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+    <net.kdt.pojavlaunch.customcontrols.ControlLayout
+        android:id="@+id/deck_control_layout"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:layout_gravity="top">
+        <View style="@style/DimensionTracker"/>
+    </net.kdt.pojavlaunch.customcontrols.ControlLayout>
+
+    <net.kdt.pojavlaunch.dualscreen.StatusStripView
+        android:id="@+id/deck_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:focusable="false"/>
+
+    <FrameLayout
+        android:id="@+id/deck_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginLeft="24dp"
+        android:layout_marginRight="24dp"
+        android:layout_marginTop="96dp"
+        android:layout_marginBottom="176dp">
+
+        <net.kdt.pojavlaunch.dualscreen.MinimapView
+            android:id="@+id/deck_map"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+
+        <net.kdt.pojavlaunch.dualscreen.InventoryView
+            android:id="@+id/deck_inventory"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"/>
+
+        <net.kdt.pojavlaunch.dualscreen.ChatLogView
+            android:id="@+id/deck_chat"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"/>
+    </FrameLayout>
+</FrameLayout>
