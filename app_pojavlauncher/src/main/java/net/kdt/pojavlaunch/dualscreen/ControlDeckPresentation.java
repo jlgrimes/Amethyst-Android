@@ -249,6 +249,7 @@ public class ControlDeckPresentation extends Presentation {
             mChat.setVisibility(tab == TAB_CHAT ? View.VISIBLE : View.GONE);
             if (tab == TAB_CHAT) mChat.scrollToLatest();
         }
+        if (mStatus != null) mStatus.setVisibility(View.VISIBLE);
         Log.i(TAG, "selectTab " + tab);
     }
 
@@ -282,27 +283,20 @@ public class ControlDeckPresentation extends Presentation {
         SkinHoles.place(mMinimap, dest, SkinHoles.MAP);
         SkinHoles.place(mInventory, dest, SkinHoles.INV);
         SkinHoles.place(mChat, dest, SkinHoles.CHAT);
+        SkinHoles.place(mStatus, dest, SkinHoles.HUD);
+        if (mStatus != null) mStatus.setVisibility(View.VISIBLE);
 
-        // Utility row + HUD sit in the dest band above the leather holes.
+        // Utility row sits in the dest band above the HUD hole (utility ends ~y120).
         float sl = dest.left, st = dest.top, sw = dest.width(), sh = dest.height();
         if (sw <= 0f || sh <= 0f) return;
         if (mDeckControlLayout != null) {
             FrameLayout.LayoutParams lp =
                     (FrameLayout.LayoutParams) mDeckControlLayout.getLayoutParams();
-            lp.height = Math.round(sh * 0.10f);
+            lp.height = Math.round(sh * (120f / SkinHoles.SKIN_H));
             lp.topMargin = Math.round(st);
             lp.leftMargin = Math.round(sl);
             lp.rightMargin = Math.round(w - (sl + sw));
             mDeckControlLayout.setLayoutParams(lp);
-        }
-        if (mStatus != null) {
-            FrameLayout.LayoutParams lp =
-                    (FrameLayout.LayoutParams) mStatus.getLayoutParams();
-            lp.height = Math.round(sh * 0.09f);
-            lp.topMargin = Math.round(st + sh * 0.10f);
-            lp.leftMargin = Math.round(sl);
-            lp.rightMargin = Math.round(w - (sl + sw));
-            mStatus.setLayoutParams(lp);
         }
 
         int dw = Math.round(dest.width()), dh = Math.round(dest.height());
@@ -312,7 +306,8 @@ public class ControlDeckPresentation extends Presentation {
             Log.i(TAG, "holes dest=" + dw + "x" + dh
                     + " map=" + SkinHoles.scale(dest, SkinHoles.MAP).toShortString()
                     + " inv=" + SkinHoles.scale(dest, SkinHoles.INV).toShortString()
-                    + " chat=" + SkinHoles.scale(dest, SkinHoles.CHAT).toShortString());
+                    + " chat=" + SkinHoles.scale(dest, SkinHoles.CHAT).toShortString()
+                    + " hud=" + SkinHoles.scale(dest, SkinHoles.HUD).toShortString());
         }
     }
 
@@ -397,6 +392,18 @@ public class ControlDeckPresentation extends Presentation {
                 if (!isShowing() || mInventory == null) return;
                 mInventory.applyJson(invJson);
             });
+        }
+
+        JSONObject hudObj = o.optJSONObject("hud");
+        if (hudObj != null) {
+            final StatusStripView.HudState hud = parseHud(hudObj.toString());
+            if (hud != null) {
+                if (hud.seq > 0) mHudSeq = hud.seq;
+                mUiHandler.post(() -> {
+                    if (!isShowing() || mStatus == null) return;
+                    mStatus.setHud(hud);
+                });
+            }
         }
 
         JSONObject chat = o.optJSONObject("chat");
@@ -484,13 +491,18 @@ public class ControlDeckPresentation extends Presentation {
         if (mHudJson == null || !mHudJson.exists()) return;
         long mod = mHudJson.lastModified();
         if (mod == mHudMod) return;
-        mHudMod = mod;
         final StatusStripView.HudState hud = parseHud(readFileQuiet(mHudJson));
         if (hud == null) return;
         if (hud.seq > 0 && hud.seq <= mHudSeq) return;
+        mHudMod = mod;
         if (hud.seq > 0) mHudSeq = hud.seq;
+        Log.i(TAG, "hud.json seq=" + hud.seq + " hp=" + hud.hp + " hunger=" + hud.hunger
+                + " x=" + (int) hud.x + " z=" + (int) hud.z);
         mUiHandler.post(() -> {
-            if (!isShowing() || mStatus == null) return;
+            if (!isShowing() || mStatus == null) {
+                mHudMod = -1;
+                return;
+            }
             mStatus.setHud(hud);
         });
     }
