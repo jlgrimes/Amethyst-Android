@@ -52,6 +52,15 @@ public class ProgressService extends Service implements TaskCountListener {
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel,  getString(R.string.notification_terminate), pendingKillIntent)
                 .setSmallIcon(R.drawable.notif_icon)
                 .setNotificationSilent();
+        // Enter foreground in onCreate so a blocked onStartCommand cannot miss the ~20s timeout.
+        Notification placeholder = mNotificationBuilder
+                .setContentText(getString(R.string.progresslayout_tasks_in_progress, ProgressKeeper.getTaskCount()))
+                .build();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NotificationUtils.NOTIFICATION_ID_PROGRESS_SERVICE, placeholder, ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST);
+        } else {
+            startForeground(NotificationUtils.NOTIFICATION_ID_PROGRESS_SERVICE, placeholder);
+        }
     }
 
     @SuppressLint("StringFormatInvalid")
