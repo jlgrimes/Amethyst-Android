@@ -53,7 +53,7 @@ public class StatusStripView extends View {
     public StatusStripView(Context c, AttributeSet a) { super(c, a); init(); }
 
     private void init() {
-        bgPaint.setColor(0xFF2B2B2B);
+        bgPaint.setColor(0xFF0C0903); // near-black oak from mock HUD band rgb(12,9,3)
         edgePaint.setColor(0xFF1A1A1A);
         edgePaint.setStyle(Paint.Style.STROKE);
         edgePaint.setStrokeWidth(2f);
@@ -86,7 +86,7 @@ public class StatusStripView extends View {
     protected void onDraw(Canvas canvas) {
         int w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
-        canvas.drawColor(0xFF2B2B2B);
+        canvas.drawColor(0xFF0C0903); // dark HUD panel, not brown oak / gray rectangle
         canvas.drawLine(0, h - 1, w, h - 1, edgePaint);
 
         HudState s = hud;
