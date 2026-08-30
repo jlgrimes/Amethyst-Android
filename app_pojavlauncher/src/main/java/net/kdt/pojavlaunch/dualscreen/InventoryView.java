@@ -181,6 +181,34 @@ public class InventoryView extends View {
     public void setIconDir(File d) { this.iconDir = d; }
     public void setCommandFile(File f) { this.commandFile = f; }
 
+    /** Skip this view's file poller; {@link ControlDeckPresentation} feeds {@link #applyJson}. */
+    public void setLiveFeed(boolean live) { this.liveFeed = live; }
+
+    /** Cover baked slot art; skip extra chrome that would fight the skin. */
+    public void setHoleMode(boolean hole) {
+        this.holeMode = hole;
+        invalidate();
+    }
+
+    /**
+     * Apply an inventory.json-shaped object ({@code selected} + {@code slots[]}).
+     * Also accepts the inventory object nested in state.json. Any thread.
+     */
+    public void applyJson(String json) {
+        Snapshot parsed = parse(json);
+        if (parsed == null) return;
+        if (parsed.slots != null) {
+            for (int i = 0; i < parsed.slots.size(); i++) {
+                loadIcon(parsed.slots.get(i).icon);
+            }
+        }
+        pending = parsed;
+        postInvalidate();
+    }
+
+    private boolean liveFeed;
+    private boolean holeMode;
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -201,6 +229,10 @@ public class InventoryView extends View {
         @Override
         public void run() {
             try {
+                if (liveFeed) {
+                    if (ioHandler != null) ioHandler.postDelayed(this, POLL_MS);
+                    return;
+                }
                 boolean exists = invFile != null && invFile.exists();
                 if (!exists) {
                     if (!announcedMissing) {
@@ -296,8 +328,8 @@ public class InventoryView extends View {
         int w = getWidth(), h = getHeight();
         if (w == 0 || h == 0) return;
 
-        // Dark stone page background.
-        canvas.drawColor(Color.parseColor("#1E1E1E"));
+        // Cover baked slot art. Hole mode uses a flatter stone so the skin frame remains.
+        canvas.drawColor(holeMode ? 0xFF2A2A28 : Color.parseColor("#1E1E1E"));
 
         if (!filePresent) {
             drawEmptyState(canvas, w, h);
@@ -319,9 +351,11 @@ public class InventoryView extends View {
         drawPanel(canvas);
         drawHotbarTray(canvas);
 
-        headerPaint.setTextSize(dp(14));
-        if (!cells.isEmpty()) {
-            canvas.drawText("Inventory", cells.get(0).x, Math.max(dp(16), cells.get(0).y - dp(8)), headerPaint);
+        if (!holeMode) {
+            headerPaint.setTextSize(dp(14));
+            if (!cells.isEmpty()) {
+                canvas.drawText("Inventory", cells.get(0).x, Math.max(dp(16), cells.get(0).y - dp(8)), headerPaint);
+            }
         }
 
         for (int i = 0; i < cells.size(); i++) {
@@ -363,8 +397,8 @@ public class InventoryView extends View {
 
     private void rebuildLayout(int w, int h) {
         cells.clear();
-        float pad = dp(10);
-        float header = dp(22);
+        float pad = holeMode ? dp(4) : dp(10);
+        float header = holeMode ? dp(4) : dp(22);
         float contentW = w - pad * 2;
         float contentH = h - pad - header;
         if (contentW <= 0 || contentH <= 0) return;
