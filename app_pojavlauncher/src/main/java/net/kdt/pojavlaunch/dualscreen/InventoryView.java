@@ -603,7 +603,7 @@ public class InventoryView extends View {
         ioHandler.post(new Runnable() {
             @Override
             public void run() {
-                String json = "{"seq":" + seq + ","from":" + from + ","to":" + to + ","button":0}";
+                String json = "{\"seq\":" + seq + ",\"from\":" + from + ",\"to\":" + to + ",\"button\":0}";
                 try {
                     FileOutputStream out = new FileOutputStream(commandFile);
                     try {
