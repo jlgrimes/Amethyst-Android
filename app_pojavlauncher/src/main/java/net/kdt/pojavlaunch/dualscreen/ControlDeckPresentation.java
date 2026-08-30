@@ -29,6 +29,7 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -94,6 +95,11 @@ public class ControlDeckPresentation extends Presentation {
     private File mInvJson;
     private File mIconDir;
     private File mCommandJson;
+    /** Last applied HUD / map meta — MAP walk dest uses these. */
+    private volatile StatusStripView.HudState mLastHud;
+    private volatile MinimapView.MapMeta mLastMap;
+    /** Shared with InventoryView writes; walk seq floors at 100. */
+    private int mCommandSeq = 99;
 
     private HandlerThread mIoThread;
     private Handler mIoHandler;
@@ -169,7 +175,10 @@ public class ControlDeckPresentation extends Presentation {
             mInventory.setLiveFeed(true);
         }
         if (mSkin != null) {
-            mSkin.setListener(this::selectTab);
+            mSkin.setListener(new SkinDeckView.Listener() {
+                @Override public void onTab(int index) { selectTab(index); }
+                @Override public void onMapTap(float nx, float ny) { sendWalk(nx, ny); }
+            });
             mSkin.setLayoutListener(dest -> layoutOverlays());
         }
         if (mDeckRoot != null) {
@@ -334,7 +343,8 @@ public class ControlDeckPresentation extends Presentation {
     /**
      * File bus poller. All reads + JSON/PNG parse happen on this HandlerThread.
      * {@code state.json} is the primary seq bus; split files are fallback.
-     * {@code command.json} tap-to-move stays on {@link InventoryView}.
+     * {@code command.json}: INV tap-to-move stays on {@link InventoryView};
+     * MAP leather-hole taps write {@code type=walk} here (harness-proven).
      */
     private final Runnable mPoll = new Runnable() {
         @Override
@@ -378,6 +388,7 @@ public class ControlDeckPresentation extends Presentation {
                 if (meta.seq > 0) mMapSeq = meta.seq;
                 mUiHandler.post(() -> {
                     if (!isShowing()) return;
+                    mLastMap = meta;
                     if (mSkin != null) mSkin.setMeta(meta);
                     if (mMinimap != null) mMinimap.setMeta(meta);
                 });
@@ -399,6 +410,7 @@ public class ControlDeckPresentation extends Presentation {
             final StatusStripView.HudState hud = parseHud(hudObj.toString());
             if (hud != null) {
                 if (hud.seq > 0) mHudSeq = hud.seq;
+                mLastHud = hud;
                 mUiHandler.post(() -> {
                     if (!isShowing() || mStatus == null) return;
                     mStatus.setHud(hud);
@@ -482,6 +494,7 @@ public class ControlDeckPresentation extends Presentation {
         if (meta.seq > 0) mMapSeq = meta.seq;
         mUiHandler.post(() -> {
             if (!isShowing()) return;
+            mLastMap = meta;
             if (mSkin != null) mSkin.setMeta(meta);
             if (mMinimap != null) mMinimap.setMeta(meta);
         });
@@ -496,6 +509,7 @@ public class ControlDeckPresentation extends Presentation {
         if (hud.seq > 0 && hud.seq <= mHudSeq) return;
         mHudMod = mod;
         if (hud.seq > 0) mHudSeq = hud.seq;
+        mLastHud = hud;
         Log.i(TAG, "hud.json seq=" + hud.seq + " hp=" + hud.hp + " hunger=" + hud.hunger
                 + " x=" + (int) hud.x + " z=" + (int) hud.z);
         mUiHandler.post(() -> {
@@ -541,6 +555,90 @@ public class ControlDeckPresentation extends Presentation {
             if (!isShowing() || mInventory == null) return;
             mInventory.applyJson(json);
         });
+    }
+
+
+    /**
+     * MAP-tab leather-hole tap → command.json type=walk (same contract as the
+     * thor-deck harness + Fabric ThorDeckMod pollCommand).
+     * World dest prefers HUD x/z; mx/mz are 128×128 cells with player at (64,64).
+     */
+    private void sendWalk(float nx, float ny) {
+        MinimapView.MapMeta map = mLastMap;
+        StatusStripView.HudState hud = mLastHud;
+        int w = (map != null && map.w > 0) ? map.w : 128;
+        int h = (map != null && map.h > 0) ? map.h : 128;
+        int scale = (map != null && map.scale > 0) ? map.scale : 1;
+        int mx = (int) Math.floor(nx * w);
+        int mz = (int) Math.floor(ny * h);
+        if (mx < 0) mx = 0;
+        if (mx > w - 1) mx = w - 1;
+        if (mz < 0) mz = 0;
+        if (mz > h - 1) mz = h - 1;
+        double playerX = hud != null ? hud.x : (map != null ? map.x : 0);
+        double playerZ = hud != null ? hud.z : (map != null ? map.z : 0);
+        double wx = playerX + (mx - w / 2.0) * scale;
+        double wz = playerZ + (mz - h / 2.0) * scale;
+        final int seq = nextCommandSeq();
+        final String json = "{\"seq\":" + seq
+                + ",\"type\":\"walk\""
+                + ",\"mx\":" + mx
+                + ",\"mz\":" + mz
+                + ",\"x\":" + num(wx)
+                + ",\"z\":" + num(wz)
+                + ",\"scale\":" + scale
+                + "}";
+        Log.i(TAG, "sendWalk nx=" + nx + " ny=" + ny + " " + json);
+        writeCommandAsync(json);
+    }
+
+    private int nextCommandSeq() {
+        synchronized (this) {
+            if (mCommandJson != null && mCommandJson.exists()) {
+                try {
+                    String raw = readFileQuiet(mCommandJson);
+                    if (raw != null && !raw.isEmpty()) {
+                        int s = new JSONObject(raw).optInt("seq", 0);
+                        if (s > mCommandSeq) mCommandSeq = s;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            if (mCommandSeq < 99) mCommandSeq = 99;
+            mCommandSeq++;
+            return mCommandSeq;
+        }
+    }
+
+    private void writeCommandAsync(final String json) {
+        final File out = mCommandJson;
+        if (out == null) {
+            Log.e(TAG, "sendWalk skipped commandFile=null json=" + json);
+            return;
+        }
+        Handler io = mIoHandler;
+        Runnable w = new Runnable() {
+            @Override public void run() {
+                try {
+                    FileOutputStream fos = new FileOutputStream(out);
+                    try {
+                        fos.write(json.getBytes("UTF-8"));
+                    } finally {
+                        fos.close();
+                    }
+                    Log.i(TAG, "sendWalk OK -> " + out.getAbsolutePath());
+                } catch (Exception e) {
+                    Log.e(TAG, "sendWalk FAIL " + out, e);
+                }
+            }
+        };
+        if (io != null) io.post(w);
+        else new Thread(w, "thor-cmd-write").start();
+    }
+
+    private static String num(double v) {
+        if (v == (long) v) return Long.toString((long) v);
+        return Double.toString(v);
     }
 
     private static MinimapView.MapMeta parseMap(String json) {

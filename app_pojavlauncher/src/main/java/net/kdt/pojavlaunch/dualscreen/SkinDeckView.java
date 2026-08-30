@@ -29,7 +29,11 @@ import java.util.Locale;
  * INV/CHAT overlays are laid from {@link SkinHoles} scaled into {@link #getSkinDest(RectF)}.
  */
 public class SkinDeckView extends View {
-    public interface Listener { void onTab(int index); }
+    public interface Listener {
+        void onTab(int index);
+        /** MAP-tab tap inside the live leather hole, normalized 0..1. */
+        void onMapTap(float nx, float ny);
+    }
     public interface LayoutListener { void onSkinLayout(RectF dest); }
 
     private static final String TAG = "SkinDeckView";
@@ -242,13 +246,31 @@ public class SkinDeckView extends View {
         }
         float x = event.getX();
         float y = event.getY();
-        // tab strip is the bottom ~22% of the letterboxed skin
+        // tab strip is the bottom ~22% of the letterboxed skin — never walk
         if (y >= dst.top + dst.height() * 0.78f && y <= dst.bottom) {
             float nx = (x - dst.left) / dst.width();
             int t = nx < 0.38f ? 0 : nx < 0.66f ? 1 : 2;
             setTab(t);
             if (listener != null) listener.onTab(t);
             return true;
+        }
+        // MAP tab tap inside live leather hole → normalized 0..1 walk
+        if (tab == 0 && dst.width() > 0f && dst.height() > 0f) {
+            float dw = dst.width(), dh = dst.height();
+            hole.set(dst.left + HOLE_L * dw, dst.top + HOLE_T * dh,
+                    dst.left + HOLE_R * dw, dst.top + HOLE_B * dh);
+            if (hole.width() > 0f && hole.height() > 0f
+                    && x >= hole.left && x <= hole.right
+                    && y >= hole.top && y <= hole.bottom) {
+                float nx = (x - hole.left) / hole.width();
+                float ny = (y - hole.top) / hole.height();
+                if (nx < 0f) nx = 0f;
+                if (nx > 1f) nx = 1f;
+                if (ny < 0f) ny = 0f;
+                if (ny > 1f) ny = 1f;
+                Log.i(TAG, "map tap nx=" + nx + " ny=" + ny + " hole=" + hole.toShortString());
+                if (listener != null) listener.onMapTap(nx, ny);
+            }
         }
         return true;
     }
