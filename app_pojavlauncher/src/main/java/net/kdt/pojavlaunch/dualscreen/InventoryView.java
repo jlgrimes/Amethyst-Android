@@ -596,13 +596,14 @@ public class InventoryView extends View {
         return -1;
     }
 
-    private void sendMove(int from, int to) {
+        private void sendMove(int from, int to) {
         if (commandFile == null || ioHandler == null) return;
-        final long seq = ++commandSeq;
+        // Share seq with ControlDeckPresentation MAP walks (floor read from file).
+        final long seq = nextCommandSeq();
         ioHandler.post(new Runnable() {
             @Override
             public void run() {
-                String json = "{\"seq\":" + seq + ",\"from\":" + from + ",\"to\":" + to + ",\"button\":0}";
+                String json = "{"seq":" + seq + ","from":" + from + ","to":" + to + ","button":0}";
                 try {
                     FileOutputStream out = new FileOutputStream(commandFile);
                     try {
@@ -614,6 +615,31 @@ public class InventoryView extends View {
                 }
             }
         });
+    }
+
+    /** Monotonic seq shared with MAP walk writes on the same command.json. */
+    private long nextCommandSeq() {
+        synchronized (this) {
+            if (commandFile != null && commandFile.exists()) {
+                try {
+                    byte[] buf = new byte[(int) Math.min(commandFile.length(), 4096)];
+                    FileInputStream in = new FileInputStream(commandFile);
+                    try {
+                        int n = in.read(buf);
+                        if (n > 0) {
+                            String raw = new String(buf, 0, n, "UTF-8");
+                            int s = new JSONObject(raw).optInt("seq", 0);
+                            if (s > commandSeq) commandSeq = s;
+                        }
+                    } finally {
+                        in.close();
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            commandSeq++;
+            return commandSeq;
+        }
     }
 
     private float dp(float v) {
