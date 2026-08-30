@@ -10,6 +10,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.util.Base64;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -20,13 +21,19 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 /**
- * Bottom-screen chrome is the mock art. Tabs swap skins. Fills the Presentation (no letterbox).
- * Live map/inv/chat are punched in by overlays on top; this view owns the wood/stone and tab hits.
+ * Bottom-screen chrome is the mock art. Tabs swap skins.
+ * Landscape 1536x1024 (3:2) skins are fit-center letterboxed — never stretched —
+ * so circles stay circles on a 16:9 Thor panel. Live map/inv/chat are punched
+ * in by overlays on top; this view owns the wood/stone and tab hits against
+ * the letterboxed dest (bottom 22%).
  */
 public class SkinDeckView extends View {
     public interface Listener { void onTab(int index); }
 
-    private final Paint smooth = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private static final String TAG = "SkinDeckView";
+    private static final float SKIN_ASPECT = 1536f / 1024f; // 3:2
+
+    private final Paint nearest = new Paint();
     private final Rect src = new Rect();
     private final RectF dst = new RectF();
 
@@ -38,12 +45,26 @@ public class SkinDeckView extends View {
     public SkinDeckView(Context c, AttributeSet a) { super(c, a); init(); }
 
     private void init() {
-        smooth.setFilterBitmap(true);
+        nearest.setFilterBitmap(false);
+        nearest.setAntiAlias(false);
+        nearest.setDither(false);
         skinMap = decodeSkin("map");
         skinInv = decodeSkin("inv");
         skinChat = decodeSkin("chat");
+        logSkin("map", skinMap);
+        logSkin("inv", skinInv);
+        logSkin("chat", skinChat);
         setClickable(true);
         setFocusable(false);
+    }
+
+    private void logSkin(String name, Bitmap b) {
+        if (b == null) {
+            Log.e(TAG, "skin_" + name + " decode FAILED");
+            return;
+        }
+        Log.i(TAG, "skin_" + name + " " + b.getWidth() + "x" + b.getHeight()
+                + " inScaled=false filter=false");
     }
 
     private Bitmap decodeSkin(String stem) {
@@ -84,10 +105,48 @@ public class SkinDeckView extends View {
 
     public int getTab() { return tab; }
 
+    /**
+     * Letterboxed dest of the current skin, in this view's coordinates.
+     * Uses native bitmap aspect (or 3:2 if the bitmap is missing). Never stretch.
+     */
+    public void getSkinDest(RectF out) {
+        Bitmap skin = currentSkin();
+        int sw = 0, sh = 0;
+        if (skin != null && !skin.isRecycled()) {
+            sw = skin.getWidth();
+            sh = skin.getHeight();
+        }
+        layoutLetterbox(getWidth(), getHeight(), sw, sh);
+        out.set(dst);
+    }
+
     private Bitmap currentSkin() {
         if (tab == 1) return skinInv;
         if (tab == 2) return skinChat;
         return skinMap;
+    }
+
+    /** Fit-center letterbox of the skin's native aspect into the view. Never stretch. */
+    private void layoutLetterbox(int w, int h, int sw, int sh) {
+        if (w <= 0 || h <= 0) {
+            dst.setEmpty();
+            return;
+        }
+        float aspect = (sw > 0 && sh > 0) ? (sw / (float) sh) : SKIN_ASPECT;
+        float viewAspect = w / (float) h;
+        float dw, dh, left, top;
+        if (viewAspect > aspect) {
+            dh = h;
+            dw = h * aspect;
+            left = (w - dw) / 2f;
+            top = 0f;
+        } else {
+            dw = w;
+            dh = w / aspect;
+            left = 0f;
+            top = (h - dh) / 2f;
+        }
+        dst.set(left, top, left + dw, top + dh);
     }
 
     @Override
@@ -98,8 +157,8 @@ public class SkinDeckView extends View {
         Bitmap skin = currentSkin();
         if (skin != null && !skin.isRecycled()) {
             src.set(0, 0, skin.getWidth(), skin.getHeight());
-            dst.set(0, 0, w, h);
-            canvas.drawBitmap(skin, src, dst, smooth);
+            layoutLetterbox(w, h, skin.getWidth(), skin.getHeight());
+            canvas.drawBitmap(skin, src, dst, nearest);
         }
     }
 
@@ -110,8 +169,9 @@ public class SkinDeckView extends View {
         }
         float x = event.getX();
         float y = event.getY();
-        if (y >= getHeight() * 0.78f) {
-            float nx = x / Math.max(1, getWidth());
+        // tab strip is the bottom ~22% of the letterboxed skin
+        if (y >= dst.top + dst.height() * 0.78f && y <= dst.bottom) {
+            float nx = (x - dst.left) / dst.width();
             int t = nx < 0.38f ? 0 : nx < 0.66f ? 1 : 2;
             setTab(t);
             if (listener != null) listener.onTab(t);
